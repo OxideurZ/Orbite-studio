@@ -25,13 +25,16 @@ from safe_area import DEFAULT_SAFE_AREA,safe_settings,safe_box
 
 from update_ui import UpdateController
 from install import data_root
+from trace_image import trace_settings,TRACE_PRESETS
 from music import settings as music_settings
 from studio_model import StudioState,PreviewBuilder,TaskRunner,palette_from_image
 from themes import ROOT,load_theme,list_themes,resolve_visual_paths,merge_configs
 
 BG='#101624';PANEL='#172134';INK='#e9edf7';MUTED='#9aaac1';ACCENT='#84dfe6'
 LAYOUTS={'Classique · grands cercles':'classic_large','Original':'classic','Épuré':'balanced','Minimal':'minimal'}
-MODES={'Automatique':'auto','Dessin au trait':'lineart','Contours photo':'edges'}
+MODES={'Automatique':'auto','Dessin au trait':'lineart','Silhouette / contour des aplats':'outline','Contours photo':'edges'}
+THRESHOLDS={'Automatique (Otsu)':'auto','Manuel (global)':'global','Local (papier irrégulier)':'adaptive'}
+POLARITIES={'Automatique':'auto','Sombre sur fond clair':'dark','Clair sur fond sombre':'light'}
 DETAILS={'Peu de détails':'low','Détails moyens':'medium','Détails fins':'high'}
 QUALITIES={'Réseaux · 1080 × 1920':'social','Master · 1440 × 2560 + 1080':'master'}
 COLOR_LABELS={'background':'Fond','ink':'Titres et points','muted':'Textes secondaires',
@@ -62,7 +65,7 @@ class StudioApp:
         self.project_file=None;self.last_output=self.state.output
         self.root.title('ORBITE Studio');self.root.geometry('1240x930');self.root.minsize(1060,760)
         self.root.columnconfigure(0,weight=1);self.root.rowconfigure(1,weight=1)
-        self.root.configure(bg=BG);self._style();self._build();self._populate(self.state)
+        self.root.configure(bg=BG);self._style();self._build();self.vars['source'].trace_add('write',self.source_changed);self._populate(self.state)
         self.root.protocol('WM_DELETE_WINDOW',self.close)
         self.root.bind('<Control-o>',lambda e:self.open_project());self.root.bind('<Control-s>',lambda e:self.save_project())
         self.root.bind_all('<MouseWheel>',self._wheel,add='+')
@@ -149,13 +152,16 @@ class StudioApp:
         main=ttk.Frame(self.root,style='App.TFrame',padding=(22,0));main.grid(row=1,column=0,sticky='nsew')
         left=ttk.Frame(main,style='App.TFrame');left.pack(side='left',fill='both',expand=True,padx=(0,18))
         self.notebook=ttk.Notebook(left);self.notebook.pack(fill='both',expand=True)
-        for key,name in [('content','Contenu'),('style','Style'),('animation','Animation'),('music','Musique'),('export','Export'),('advanced','JSON avancé')]:
+        for key,name in [('content','Contenu'),('detection','Détection'),('style','Style'),('animation','Animation'),('music','Musique'),('export','Export'),('advanced','JSON')]:
             panel=ScrollPanel(self.notebook);self.notebook.add(panel,text=name);setattr(self,key+'_panel',panel)
-        self._content();self._appearance();self._animation();self._music();self._export();self._advanced()
+        self._content();self._detection();self._appearance();self._animation();self._music();self._export();self._advanced()
         right=ttk.Frame(main,padding=12,width=384);right.pack(side='right',fill='y');right.pack_propagate(False)
-        ttk.Label(right,text='Aperçu du style',style='Section.TLabel').pack(anchor='w',pady=(0,8))
+        ttk.Label(right,text='Source, détection et animation',style='Section.TLabel').pack(anchor='w',pady=(0,8))
         self.view=ttk.Combobox(right,textvariable=self._var('view','Construction'),state='readonly',
-                               values=['Construction','Image finale','Ouverture']);self.view.pack(fill='x',pady=(0,8))
+                               values=['Construction','Image finale','Ouverture','Source','Tracé détecté','Comparaison source / traits']);self.view.pack(fill='x',pady=(0,8))
+        inspect=ttk.Frame(right);inspect.pack(fill='x',pady=(0,8))
+        for label,view in [('Source','Source'),('Traits','Tracé détecté'),('Comparer','Comparaison source / traits')]:
+            ttk.Button(inspect,text=label,command=lambda v=view:self.vars['view'].set(v)).pack(side='left',expand=True,fill='x',padx=(0,4))
         ttk.Checkbutton(right,text='Voir les marges · aperçu uniquement',
                         variable=self._var('show_safe_area',True,tk.BooleanVar,False),
                         command=self._fit_preview).pack(anchor='w',pady=(0,8))
@@ -164,6 +170,9 @@ class StudioApp:
         self.preview_label=tk.Label(right,bg='#090d20',fg=MUTED,text='Chargement de l’aperçu…',width=1,height=1)
         self.preview_label.pack(fill='both',expand=True)
         self.preview_label.bind('<Configure>',lambda e:self._fit_preview())
+        self.preview_label.bind('<ButtonPress-1>',self.exclusion_start)
+        self.preview_label.bind('<B1-Motion>',self.exclusion_move)
+        self.preview_label.bind('<ButtonRelease-1>',self.exclusion_finish)
         footer=ttk.Frame(self.root,style='App.TFrame',padding=(22,12,22,16));footer.grid(row=2,column=0,sticky='ew')
         actions=ttk.Frame(footer,style='App.TFrame');actions.pack(fill='x')
         for action,label in [('check','Vérifier'),('stills','Images fixes'),('preview','Vidéo test'),('export','Exporter')]:
@@ -284,11 +293,136 @@ class StudioApp:
         try:self.vars['music_variation'].set((int(self.vars['music_variation'].get())+1)%2147483648)
         except ValueError:self._error('La variation doit être un entier positif ou nul.')
 
+    def _detection(self):
+        p=self.detection_panel.body
+        self._section(p,'Commencer avec un profil',0)
+        self._combo(p,1,'Profil','trace_preset',list(TRACE_PRESETS))
+        ttk.Button(p,text='Appliquer le profil',command=self.apply_detection_preset).grid(row=2,column=1,sticky='w',pady=6)
+        self._combo(p,3,'Méthode','mode',MODES)
+        self._combo(p,4,'Détails photo','detail',DETAILS)
+        ttk.Label(p,text='Dessin au trait : suit le centre des lignes. Silhouette : suit les bords et les trous.\nPhoto : suit les variations de contraste. Le SVG conserve ses sous-tracés vectoriels.',style='Muted.TLabel',wraplength=520).grid(row=5,column=0,columnspan=3,sticky='w',pady=8)
+        self._section(p,'Seuil et fond · images bitmap',6)
+        self._combo(p,7,'Seuil','trace_threshold_method',THRESHOLDS)
+        self._entry(p,8,'Seuil manuel · 1 à 254','trace_threshold')
+        self._combo(p,9,'Couleur des traits','trace_polarity',POLARITIES)
+        self._entry(p,10,'Contraste local · 0 à 40','trace_adaptive_offset')
+        self._section(p,'Conserver les petits détails',11)
+        for row,label,key in [(12,'Résolution d’analyse · 256 à 4096','max_size'),
+                (13,'Surface minimale · pixels','min_component'),(14,'Longueur minimale · pixels','min_stroke'),
+                (15,'Lissage · 0 à 3','smoothing'),(16,'Simplification · 0 à 5','simplify'),
+                (17,'Refermer les petites coupures · 0 à 3','gap_close'),(18,'Limite des traits · 0 = sans limite','max_strokes')]:
+            self._entry(p,row,label,'trace_'+key)
+        ttk.Checkbutton(p,text='Préserver les pupilles et les petits points pleins',variable=self._var('trace_preserve_accents',True,tk.BooleanVar)).grid(row=19,column=0,columnspan=3,sticky='w',pady=8)
+        ttk.Label(p,text='Pour retrouver les détails : diminuer surface et longueur minimales.\nLe lissage et la simplification élevés peuvent effacer les petits motifs.\nRefermer les coupures peut aussi fusionner deux traits : commencer à 0.',style='Muted.TLabel',wraplength=520).grid(row=20,column=0,columnspan=3,sticky='w',pady=8)
+        self._section(p,'Contours photo · réglages fins',21)
+        self._entry(p,22,'Flou des contours · 0 = automatique','trace_edge_sigma')
+        self._entry(p,23,'Sélectivité · 0 = auto, sinon 0,01 à 0,99','trace_edge_quantile')
+        self._section(p,'Contrôler avant de produire la vidéo',24)
+        tools=ttk.Frame(p);tools.grid(row=25,column=0,columnspan=3,sticky='ew',pady=6)
+        for label,view in [('Voir la source','Source'),('Voir les traits','Tracé détecté'),('Superposer','Comparaison source / traits')]:
+            ttk.Button(tools,text=label,command=lambda v=view:self.vars['view'].set(v)).pack(side='left',padx=(0,6))
+        ttk.Button(p,text='Plus de détails Fourier',command=self.improve_fourier_details).grid(row=26,column=1,sticky='w',pady=6)
+        ttk.Button(p,text='Conserver tous les traits SVG',command=self.keep_all_svg).grid(row=27,column=1,sticky='w',pady=6)
+        self._section(p,'Retirer manuellement une zone · bitmap',28)
+        ttk.Checkbutton(p,text='Dessiner un rectangle dans l’aperçu des traits',variable=self._var('exclude_tool',False,tk.BooleanVar,False),command=self.enable_exclusion_tool).grid(row=29,column=0,columnspan=3,sticky='w')
+        self.exclusion_label=ttk.Label(p,text='Aucune zone ignorée.',style='Muted.TLabel');self.exclusion_label.grid(row=30,column=0,columnspan=3,sticky='w')
+        tools=ttk.Frame(p);tools.grid(row=31,column=0,columnspan=3,sticky='w',pady=8)
+        ttk.Button(tools,text='Annuler la dernière zone',command=self.undo_exclusion).pack(side='left',padx=(0,8))
+        ttk.Button(tools,text='Tout rétablir',command=self.clear_exclusions).pack(side='left')
+        ttk.Button(tools,text='Exporter le tracé SVG…',command=self.export_detected_svg).pack(side='left',padx=(8,0))
+        ttk.Label(p,text='Les zones sont enregistrées dans le projet. Une nouvelle source les réinitialise.\nL’export utilise exactement les réglages de l’aperçu ; le tracé SVG peut être\nretouché dans Inkscape puis réutilisé sans nouvelle détection.',style='Muted.TLabel',wraplength=520).grid(row=32,column=0,columnspan=3,sticky='w',pady=8)
+
+    def apply_detection_preset(self):
+        name=self.vars['trace_preset'].get()
+        if name not in TRACE_PRESETS:return
+        mode,detail,options=TRACE_PRESETS[name];c=trace_settings(options);self.loading=True
+        self.state.config['trace']=c
+        for key,value in c.items():
+            if key not in {'exclude_regions','threshold_method','polarity'}:self.vars['trace_'+key].set(value)
+        self.vars['trace_threshold_method'].set(next(k for k,v in THRESHOLDS.items() if v==c['threshold_method']))
+        self.vars['trace_polarity'].set(next(k for k,v in POLARITIES.items() if v==c['polarity']))
+        self.vars['mode'].set(next(k for k,v in MODES.items() if v==mode));self.vars['detail'].set(next(k for k,v in DETAILS.items() if v==detail))
+        self.loading=False;self._update_exclusion_label();self._dirty()
+        self.status.configure(text='Profil appliqué. Vérifier les traits puis la reconstruction Fourier dans l’aperçu.')
+
+    def source_changed(self,*args):
+        if self.loading:return
+        self.clear_exclusions();self.keep_all_svg()
+
+    def keep_all_svg(self):
+        self.vars['contours'].set('Tous les traits');self.vars['path_id'].set('')
+        self.status.configure(text='Tous les sous-tracés SVG sont conservés, y compris les détails intérieurs.')
+
+    def improve_fourier_details(self):
+        rows=self._get_stages();n=max(1536,rows[-1][0]);samples=max(65536,int(self.vars['samples'].get()),2*n+2)
+        if samples%2:samples+=1
+        rows[-1]=(n,rows[-1][1]);self.vars['samples'].set(str(samples));self._set_stages(rows);self._dirty()
+        self.vars['view'].set('Image finale');self.status.configure(text=f'{n} cercles à la dernière étape · {samples} échantillons. Les durées restent identiques.')
+
+    def enable_exclusion_tool(self):
+        if self.vars['exclude_tool'].get():
+            if Path(self.vars['source'].get()).suffix.lower()=='.svg':
+                self.vars['exclude_tool'].set(False);self.status.configure(text='Les zones à retirer concernent les bitmaps. Retoucher le SVG dans Inkscape, ou choisir Tous les traits.');return
+            self.vars['view'].set('Tracé détecté');self.status.configure(text='Dans l’aperçu, tracer un rectangle autour des éléments à retirer. Décocher pour terminer.')
+
+    def _image_position(self,event):
+        if not hasattr(self,'preview_placement') or not hasattr(self,'preview_image'):return None
+        box=self.preview_image.info.get('image_box')
+        if not box:return None
+        left,top,width,height=self.preview_placement
+        x=(event.x-left)*self.preview_image.width/width;y=(event.y-top)*self.preview_image.height/height
+        return (max(0,min(1,(x-box[0])/(box[2]-box[0]))),max(0,min(1,(y-box[1])/(box[3]-box[1]))))
+
+    def exclusion_start(self,event):
+        if not self.vars['exclude_tool'].get() or self.vars['view'].get() not in {'Tracé détecté','Comparaison source / traits'}:return
+        self.exclusion_anchor=self._image_position(event);self.exclusion_end=self.exclusion_anchor
+
+    def exclusion_move(self,event):
+        if getattr(self,'exclusion_anchor',None) is not None:
+            self.exclusion_end=self._image_position(event);self._fit_preview()
+
+    def exclusion_finish(self,event):
+        start=getattr(self,'exclusion_anchor',None);end=self._image_position(event)
+        self.exclusion_anchor=None;self.exclusion_end=None
+        if start is None or end is None:return
+        box=[min(start[0],end[0]),min(start[1],end[1]),max(start[0],end[0]),max(start[1],end[1])]
+        if box[2]-box[0]<.005 or box[3]-box[1]<.005:self._fit_preview();return
+        if len(self.state.config['trace']['exclude_regions'])>=100:self._error('Au plus 100 zones.');return
+        self.state.config['trace']['exclude_regions'].append(box);self._update_exclusion_label();self._dirty()
+
+    def _update_exclusion_label(self):
+        n=len(self.state.config.get('trace',{}).get('exclude_regions',[]));self.exclusion_label.configure(text=f'{n} zone(s) ignorée(s).' if n else 'Aucune zone ignorée.')
+
+    def undo_exclusion(self):
+        zones=self.state.config['trace']['exclude_regions']
+        if zones:zones.pop();self._update_exclusion_label();self._dirty()
+
+    def clear_exclusions(self):
+        self.state.config.setdefault('trace',{})['exclude_regions']=[];self._update_exclusion_label();self._dirty()
+
+    def export_detected_svg(self):
+        try:
+            state=self.collect();source=Path(state.source)
+            if not source.is_file():raise ValueError('Choisir une image seule pour exporter son tracé.')
+            destination=filedialog.asksaveasfilename(title='Exporter le tracé pour retouche',defaultextension='.svg',filetypes=[('SVG','*.svg')])
+            if not destination:return
+            def work():
+                try:
+                    if source.suffix.lower()=='.svg':
+                        import shutil
+                        if source.resolve()!=Path(destination).resolve():shutil.copyfile(source,destination)
+                    else:
+                        from trace_image import trace
+                        trace(source,destination,mode=state.mode,detail=state.detail,options=state.config.get('trace'))
+                    self.events.put(('trace_exported',destination))
+                except Exception as exc:self.events.put(('trace_export_error',str(exc)))
+            self.executor.submit(work);self.status.configure(text='Export du tracé SVG en cours…')
+        except Exception as exc:self._error(exc)
+
     def _export(self):
         p=self.export_panel.body
         self._section(p,'Image vers contours',0)
-        self._combo(p,1,'Extraction','mode',MODES)
-        self._combo(p,2,'Détails photo','detail',DETAILS)
+        ttk.Button(p,text='Régler la détection et vérifier les détails…',command=lambda:self.notebook.select(self.detection_panel)).grid(row=1,column=0,columnspan=3,sticky='w')
         ttk.Label(p,text='Les dessins au trait donnent les meilleurs résultats. Pour une photo,\ncommencer par Images fixes et ajuster le niveau de détails.',style='Muted.TLabel').grid(row=3,column=0,columnspan=3,sticky='w',pady=8)
         self._section(p,'Vidéo',4)
         self._combo(p,5,'Résolution','quality',QUALITIES)
@@ -325,6 +459,13 @@ class StudioApp:
         for key,mapping,value in [('layout',LAYOUTS,c['layout']),('mode',MODES,state.mode),('detail',DETAILS,state.detail),
                                   ('quality',QUALITIES,state.quality),('contours',{'Tous les traits':'all','Contour fermé principal':'largest'},c['contours'])]:
             direct[key]=next(k for k,v in mapping.items() if v==value)
+        detection=trace_settings(c.get('trace'));self.state.config['trace']=detection
+        for key,value in detection.items():
+            if key!='exclude_regions':direct['trace_'+key]=value
+        direct['trace_threshold_method']=next(k for k,v in THRESHOLDS.items() if v==detection['threshold_method'])
+        direct['trace_polarity']=next(k for k,v in POLARITIES.items() if v==detection['polarity'])
+        direct['trace_preset']=next(iter(TRACE_PRESETS));direct['exclude_tool']=False
+        self._update_exclusion_label()
         music=music_settings(c.get('music'))
         direct['music_mode']='Générative par image' if music['mode']=='generative' else 'Classique original'
         direct['music_style']={'orbital':'Orbite · arpèges doux','ambient':'Brume · nappes aériennes','crystalline':'Cristal · notes légères'}[music['style']]
@@ -352,6 +493,11 @@ class StudioApp:
         c['fonts']={key:str(Path(v['font_'+key]).expanduser().resolve()) for key in ['sans','bold','serif']}
         c['captions']={key:v[key] for key in ['early','middle','late']}
         c['background_opacity']=float(v['opacity']);c['background_dimming']={'top':float(v['dim_top']),'bottom':float(v['dim_bottom'])}
+        detection=trace_settings(c.get('trace'))
+        for key in ['threshold','max_size','min_component','gap_close','max_strokes']:detection[key]=int(v['trace_'+key])
+        for key in ['adaptive_offset','min_stroke','smoothing','simplify','edge_sigma','edge_quantile']:detection[key]=float(str(v['trace_'+key]).replace(',','.'))
+        detection['threshold_method']=THRESHOLDS[v['trace_threshold_method']];detection['polarity']=POLARITIES[v['trace_polarity']]
+        detection['preserve_accents']=bool(v['trace_preserve_accents']);c['trace']=detection
         c['layout']=LAYOUTS[v['layout']];c['contours']={'Tous les traits':'all','Contour fermé principal':'largest'}[v['contours']]
         c['path_id']=v['path_id'].strip() or None;c['samples']=int(v['samples'])
         for key in ['intro','outro','hero_scale']:c[key]=float(str(v[key]).replace(',','.'))
@@ -445,10 +591,12 @@ class StudioApp:
 
     def choose_source(self):
         file=filedialog.askopenfilename(title='Choisir l’image à dessiner',filetypes=[('Images et SVG','*.svg *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff'),('Tous les fichiers','*')])
-        if file:self.vars['source'].set(file)
+        if file:
+            self.clear_exclusions();self.keep_all_svg();self.vars['source'].set(file)
     def choose_folder(self):
         folder=filedialog.askdirectory(title='Choisir un dossier d’images')
-        if folder:self.vars['source'].set(folder)
+        if folder:
+            self.clear_exclusions();self.keep_all_svg();self.vars['source'].set(folder)
     def choose_output(self):
         folder=filedialog.askdirectory(title='Dossier des vidéos et aperçus')
         if folder:self.vars['output'].set(folder)
@@ -542,7 +690,9 @@ class StudioApp:
         try:
             while True:
                 kind,data=self.events.get_nowait()
-                if kind=='preview':
+                if kind=='trace_exported':self.status.configure(text='Tracé SVG exporté : '+data)
+                elif kind=='trace_export_error':self._error(data)
+                elif kind=='preview':
                     generation,image,caption,area=data
                     if generation==self.preview_generation:
                         self.preview_image=image;self.preview_area=area;self._fit_preview()
@@ -586,7 +736,16 @@ class StudioApp:
                 draw.rectangle(rectangle,fill=(220,90,120,55))
             draw.rectangle((x0,y0,x1-1,y1-1),outline=(132,223,230,210),width=1)
             image=Image.alpha_composite(image.convert('RGBA'),overlay).convert('RGB')
+        if self.vars['view'].get() in {'Tracé détecté','Comparaison source / traits'}:
+            box=self.preview_image.info.get('image_box')
+            if box:
+                draw=ImageDraw.Draw(image)
+                zones=list(self.state.config.get('trace',{}).get('exclude_regions',[]))
+                if getattr(self,'exclusion_anchor',None) is not None and getattr(self,'exclusion_end',None) is not None:
+                    a,b=self.exclusion_anchor,self.exclusion_end;zones.append([min(a[0],b[0]),min(a[1],b[1]),max(a[0],b[0]),max(a[1],b[1])])
+                for x0,y0,x1,y1 in zones:draw.rectangle((box[0]+x0*(box[2]-box[0]),box[1]+y0*(box[3]-box[1]),box[0]+x1*(box[2]-box[0]),box[1]+y1*(box[3]-box[1])),outline='#e44466',width=2)
         image.thumbnail(size)
+        self.preview_placement=((self.preview_label.winfo_width()-image.width)/2,(self.preview_label.winfo_height()-image.height)/2,image.width,image.height)
         self.preview_photo=ImageTk.PhotoImage(image,master=self.root)
         self.preview_label.configure(image=self.preview_photo,text='')
     def _wheel(self,event):

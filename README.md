@@ -48,6 +48,7 @@ précédente. Les mises à jour suivent les commits publiés sur `main`.
 - Six couleurs, trois polices et tous les réglages JSON existants.
 - Musique par image : Orbite, Brume, Cristal ou motif classique.
 - Écoute audio seule avant de produire une vidéo.
+- Détection réglable : portrait, silhouette, photo ; comparaison source/traits et zones à retirer.
 - Export vertical 1080 × 1920 ou 1440 × 2560, cadence personnalisable.
 - Projets enregistrables et thèmes importables/exportables.
 - Composition classique avec grands cercles, projections droites et plans finaux centrés.
@@ -61,6 +62,7 @@ Les photos sont converties en contours ; contrôler les images fixes avant expor
 ## Documentation
 
 - [Utiliser le GUI](STUDIO.md)
+- [Corriger la détection et les détails intérieurs](DETECTION.md)
 - [Personnaliser les thèmes](THEMES.md)
 - [Musique : méthodes, publications et réglages](MUSIQUE.md)
 - [Historique des versions](CHANGELOG.md)

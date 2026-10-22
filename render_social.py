@@ -16,6 +16,7 @@ from collections import OrderedDict
 from copy import deepcopy
 import hashlib
 from composition import adaptive_composition,fit_bounds,value_bounds
+from trace_image import DEFAULT_TRACE,trace_settings
 from runtime import require_ffmpeg
 from pathlib import Path
 
@@ -45,7 +46,7 @@ DEFAULT = {
     'fonts':DEFAULT_FONTS.copy(),'background_dimming':{'top':.25,'bottom':.03},
     'audio': True, 'source_credit': '',
     'safe_area':DEFAULT_SAFE_AREA.copy(),
-    'music':DEFAULT_MUSIC.copy(),
+    'music':DEFAULT_MUSIC.copy(),'trace':DEFAULT_TRACE.copy(),
 }
 
 
@@ -96,6 +97,7 @@ def read_config(args):
 
 
 def validate_animation(c):
+    trace_settings(c.get('trace'))
     validate_music(music_settings(c.get("music")))
     if len(c['steps']) != len(c['durations']) or not c['steps']:
         raise ValueError('steps and durations must have the same nonzero length')
@@ -283,9 +285,8 @@ class Film:
             self.last=max(c['steps']);self.bg=None;return
         self.bg=self.background()
         self.grid=np.arange(0,len(self.z),2)
-        visible=(self.pen & np.r_[True,self.pen[:-1]] & np.r_[True,True,self.pen[:-2]])[self.grid]
-        cuts=np.flatnonzero(np.diff(np.r_[False,visible,False]))
-        self.visible_runs=[self.grid[a:b] for a,b in zip(cuts[::2],cuts[1::2])]
+        cuts=np.flatnonzero(np.diff(np.r_[False,self.pen,False]))
+        self.visible_runs=[np.unique(np.r_[np.arange(a,b,2),b-1]) for a,b in zip(cuts[::2],cuts[1::2])]
         self.star_ids=np.unique(np.r_[np.linspace(0,len(self.z)-1,64,dtype=int),
             np.argmin(self.z.real),np.argmax(self.z.real),np.argmin(self.z.imag),np.argmax(self.z.imag)])
         self.final_transition=None
@@ -321,8 +322,11 @@ class Film:
         limit=int(upto*(len(z)-1))
         for ids in self.visible_runs:
             ids=ids[:np.searchsorted(ids,limit,side='right')]
-            if len(ids)<2:continue
+            if not len(ids):continue
             values=z[ids]
+            if len(values)==1:
+                if not ghost:cv.circle((center[0]+values[0].real*factor,center[1]+values[0].imag*factor),max(.6,width/2),color or self.colors['trace'],fill=color or self.colors['trace'])
+                continue
             if upto==1 and self.pen[-1] and self.pen[0] and len(self.visible_runs)==1:
                 values=np.r_[values,values[0]]
             run=np.column_stack((center[0]+values.real*factor,center[1]+values.imag*factor))
@@ -667,7 +671,7 @@ def main():
     ap.add_argument('--check',action='store_true',help='Valider sans tracer ni produire de rendu')
     source=ap.add_mutually_exclusive_group()
     source.add_argument('--svg');source.add_argument('--image',help='dark line art on a light background')
-    ap.add_argument('--trace-mode',choices=['auto','lineart','edges'],default='auto')
+    ap.add_argument('--trace-mode',choices=['auto','lineart','outline','edges'],default='auto')
     ap.add_argument('--detail',choices=['low','medium','high'],default='medium')
     ap.add_argument('--path-id')
     ap.add_argument('--title');ap.add_argument('--brand');ap.add_argument('--background')
@@ -696,7 +700,7 @@ def main():
     if args.image:
         from trace_image import trace
         traced=Path(str(prefix)+'_trace.svg')
-        print(json.dumps(trace(Path(args.image).resolve(),traced,mode=args.trace_mode,detail=args.detail),ensure_ascii=False),flush=True)
+        print(json.dumps(trace(Path(args.image).resolve(),traced,mode=args.trace_mode,detail=args.detail,options=c.get('trace')),ensure_ascii=False),flush=True)
         c['svg']=str(traced);c['path_id']=args.path_id
         c['contours']=args.contours or 'all'
         if not args.config:

@@ -1,5 +1,23 @@
 # Changements
 
+## 2.1.0 — 22 octobre 2026
+
+- Nouvelle méthode Silhouette : suit les bords des aplats et leurs trous, au lieu
+  de réduire des personnages pleins à un squelette. Détection automatique adaptée
+  aux dessins anticrénelés et aux fonds clairs, y compris les damiers clairs intégrés.
+- Seuil Otsu, seuil manuel/local, polarité, résolution, filtres de petits détails,
+  lissage, simplification, fermeture, gradients photo et limite de traits réglables.
+- Les points et pupilles isolés sont conservés. La limite de traits en photo n’est
+  plus imposée silencieusement ; une limite manuelle est signalée dans les rapports.
+- Correction de l’affichage des très courts passages stylo baissé.
+- Nouvel onglet Détection, profils de base et comparaison source/traits avant Fourier.
+  Comptage des sous-tracés et indication des filtres SVG qui excluent l’intérieur.
+- Zones à ignorer au rectangle, annulation, export SVG pour retouche et bouton de
+  finesse Fourier. L’export SVG fonctionne en arrière-plan.
+- Réglages communs à l’aperçu, à l’export et aux clés de cache ; sauvegarde avec les
+  projets. Les bitmaps n’héritent plus d’un filtre ou identifiant SVG précédent.
+- Forcer recalcule également la détection ; un rapport de cache manquant est réparé.
+
 ## 2.0.1 — 22 octobre 2026
 
 - Retour à la composition d’origine : cercles et sujet à la même échelle,

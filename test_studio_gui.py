@@ -77,4 +77,43 @@ class GuiWalkthrough(unittest.TestCase):
             finally:
                 app.close();app.preview_builder.close()
 
+    def test_detection_controls_manual_regions_and_svg_export(self):
+        import tkinter as tk
+        from types import SimpleNamespace
+        from PIL import Image,ImageDraw
+        from studio import StudioApp
+        from trace_image import DEFAULT_TRACE
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ,{'ORBITE_HOME':folder,'ORBITE_DATA_DIR':str(Path(folder)/'data')}):
+            root=tk.Tk();app=StudioApp(root,preview_enabled=False,updates_enabled=False)
+            try:
+                root.update();app.notebook.select(app.detection_panel);root.update()
+                # Every extraction option is available without editing JSON.
+                self.assertFalse((set(DEFAULT_TRACE)-{'exclude_regions'})-{k[6:] for k in app.vars if k.startswith('trace_')})
+                app.vars['title'].set('Conserver ce titre');app.vars['trace_threshold'].set('erreur')
+                app.vars['trace_preset'].set('Silhouette / logo plein');app.apply_detection_preset()
+                self.assertEqual(app.vars['title'].get(),'Conserver ce titre')
+                self.assertEqual(app.collect().mode,'outline');self.assertEqual(app.collect().config['trace']['max_strokes'],0)
+                source=Path(folder)/'logo.png';im=Image.new('L',(200,100),255);ImageDraw.Draw(im).rectangle((20,20,180,80),fill=0);im.save(source)
+                app.vars['source'].set(str(source));app.vars['view'].set('Tracé détecté')
+                sheet,caption=app.preview_builder.build(app.collect(),'Tracé détecté');app.preview_image=sheet;app._fit_preview();root.update()
+                left,top,width,height=app.preview_placement;box=sheet.info['image_box']
+                def event(x,y):return SimpleNamespace(x=left+(box[0]+x*(box[2]-box[0]))*width/sheet.width,y=top+(box[1]+y*(box[3]-box[1]))*height/sheet.height)
+                app.vars['exclude_tool'].set(True);app.exclusion_start(event(.1,.1));app.exclusion_move(event(.2,.3));app.exclusion_finish(event(.2,.3))
+                self.assertEqual(len(app.collect().config['trace']['exclude_regions']),1)
+                app.undo_exclusion();self.assertFalse(app.collect().config['trace']['exclude_regions'])
+                app.improve_fourier_details();self.assertGreaterEqual(max(app.collect().config['steps']),1536)
+                self.assertEqual(app.collect().config['samples'],65536)
+                # Source edits do not retain an unrelated SVG ID or an old erase region.
+                app.vars['path_id'].set('old_id');app.vars['contours'].set('Contour fermé principal')
+                app.state.config['trace']['exclude_regions']=[[0,0,.1,.1]]
+                app.vars['source'].set(str(source)+' ');app.vars['source'].set(str(source))
+                self.assertEqual(app.collect().config['path_id'],None);self.assertEqual(app.collect().config['contours'],'all')
+                self.assertEqual(app.collect().config['trace']['exclude_regions'],[])
+                destination=Path(folder)/'retouche.svg'
+                with patch('studio.filedialog.asksaveasfilename',return_value=str(destination)):app.export_detected_svg()
+                limit=time.monotonic()+10
+                while not destination.exists() and time.monotonic()<limit:root.update();time.sleep(.02)
+                self.assertTrue(destination.is_file());self.assertTrue(destination.with_suffix('.trace.json').is_file())
+            finally:app.close()
+
 if __name__=='__main__':unittest.main()

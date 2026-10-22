@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import uuid
+from trace_image import trace_settings,detection_preview
 from install import data_root
 
 import numpy as np
@@ -70,6 +71,7 @@ class StudioState:
         if type(self.jobs) is not int or not 0<=self.jobs<=4:raise ValueError('Choisir entre 0 et 4 traitements en parallèle.')
         if type(self.force) is not bool:raise ValueError('force doit être vrai ou faux.')
         validate_visual(self.config)
+        trace_settings(self.config.get('trace'))
         for key in ['intro','outro']:
             value=self.config.get(key)
             if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value):
@@ -88,7 +90,7 @@ class StudioState:
         if isinstance(zoom,bool) or not isinstance(zoom,(int,float)) or not math.isfinite(zoom) or not .1<=zoom<=10:
             raise ValueError('Le zoom final doit être compris entre 0.1 et 10.')
         if self.quality not in {'social','master'}:raise ValueError('Qualité inconnue.')
-        if self.mode not in {'auto','lineart','edges'} or self.detail not in {'low','medium','high'}:
+        if self.mode not in {'auto','lineart','outline','edges'} or self.detail not in {'low','medium','high'}:
             raise ValueError('Réglage d’extraction inconnu.')
         if self.fps is not None and (type(self.fps) is not int or not 1<=self.fps<=120):
             raise ValueError('Choisir une cadence entre 1 et 120 images/s.')
@@ -216,15 +218,29 @@ class PreviewBuilder:
     def build(self,state,view='Construction'):
         state.validate();demo=not state.source.strip()
         source=ROOT/'examples/etoile.svg' if demo else inputs(state.source,state.recursive)[0]
+        if view=='Source' and source.suffix.lower()!='.svg':
+            return detection_preview(source,None,None,'Source'),source.name+' · source avant détection'
         if source.suffix.lower()=='.svg':vector=source
         else:
             from trace_image import trace
-            key=hashlib.sha256(source.read_bytes()+(state.mode+state.detail).encode()).hexdigest()
+            key=hashlib.sha256(source.read_bytes()+(state.mode+state.detail+json.dumps(trace_settings(state.config.get('trace')),sort_keys=True)).encode()).hexdigest()
             vector=Path(self.temp.name)/(key+'.svg')
-            if not vector.exists():trace(source,vector,mode=state.mode,detail=state.detail)
+            if not vector.exists() or not vector.with_suffix('.trace.json').is_file():trace(source,vector,mode=state.mode,detail=state.detail,options=state.config.get('trace'))
         c=merge_configs(DEFAULT,state.animation_config())
         c['svg']=str(vector);c['title']=state.config.get('title') or ('Une étoile' if demo else source.stem.replace('_',' ').replace('-',' '))
         if demo:c['path_id']=None
+        report=None
+        if source.suffix.lower()!='.svg':
+            c['contours']='all';c['path_id']=None
+            report=json.loads(vector.with_suffix('.trace.json').read_text())
+        if view in {'Source','Tracé détecté','Comparaison source / traits'}:
+            if source.suffix.lower()=='.svg':
+                from svg_diagnostics import svg_preview
+                image,caption=svg_preview(source,view,None if view=='Source' else c['path_id'],'all' if view=='Source' else c['contours'])
+                return image,caption
+            caption=f"{report['mode']} · {report['strokes']} traits · seuil {report['threshold']} · {report['removed_components']} petits éléments filtrés"
+            if report['warnings']:caption+='\n'+' '.join(report['warnings'])
+            return detection_preview(source,vector,report,view),caption
         key=(hashlib.sha256(Path(c['svg']).read_bytes()).hexdigest(),c['samples'],c['path_id'],c['contours'],c['layout'],tuple(c['steps']))
         if key!=self.math_key:
             self.film=Film(c,360,640);self.math_key=key
@@ -233,7 +249,12 @@ class PreviewBuilder:
         if view=='Image finale':t=film.total-.3
         elif view=='Ouverture':t=min(.7,c['intro']*.7)
         else:t=float(film.ends[-1]-.4)
-        return film.frame(t),('Démo · aperçu du style' if demo else source.name)
+        caption='Démo · aperçu du style' if demo else source.name
+        if report:caption+=f" · {report['mode']} · {report['strokes']} traits"
+        caption+=f"\n{film.info['selected_components']}/{film.info['available_components']} tracés · erreur Fourier {film.errors[film.last]:.2f} px"
+        if film.errors[film.last]>1.5:caption+=' · essayer Plus de détails Fourier'
+        if c['contours']=='largest':caption+='\nContour principal uniquement : les détails intérieurs sont exclus.'
+        return film.frame(t),caption
     def close(self):self.temp.cleanup()
 
 

@@ -23,7 +23,7 @@ VISUAL_DEFAULTS={
     'safe_area':DEFAULT_SAFE_AREA.copy(),
 }
 VISUAL_FIELDS=set(VISUAL_DEFAULTS)
-NESTED_FIELDS={'colors','fonts','background_dimming','captions','safe_area','music'}
+NESTED_FIELDS={'colors','fonts','background_dimming','captions','safe_area','music','trace'}
 
 
 def merge_configs(base,override):

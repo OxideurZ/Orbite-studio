@@ -25,14 +25,17 @@ Les raccourcis Ctrl+O et Ctrl+S ouvrent et enregistrent un projet.
 1. **Contenu** : choisir un dessin, un SVG, une photo ou un dossier. Modifier le
    titre, la signature et les petites descriptions. Un titre vide reprend le nom
    du fichier ; un épisode numérique s’incrémente dans les lots.
-2. **Style** : choisir une base. Les textes et l’animation sont conservés.
+2. **Détection** : choisir un profil portrait, silhouette ou photo. Comparer la source
+   et les traits détectés ; vérifier les yeux et les détails intérieurs avant la vidéo.
+   [Guide des seuils, contrôles manuels et SVG](DETECTION.md).
+3. **Style** : choisir une base. Les textes et l’animation sont conservés.
    Choisir éventuellement une image de fond : une palette est proposée
    automatiquement. Chaque couleur reste modifiable par son code hexadécimal ou
    son sélecteur. Désactiver l’adaptation automatique pour garder sa palette.
-3. Observer l’**aperçu**, puis choisir Construction, Image finale ou Ouverture.
+4. Observer l’**aperçu**, puis choisir Construction, Image finale ou Ouverture.
    Sans source, un portrait de démonstration montre le style. Pour un dossier,
    l’aperçu représente la première image seulement.
-4. Cliquer **Vérifier** pour contrôler les paramètres et sources sans rendu.
+5. Cliquer **Vérifier** pour contrôler les paramètres et sources sans rendu.
    **Images fixes** produit trois images de contrôle. **Vidéo test** produit un
    MP4 540 × 960 avec le rythme et le son. **Exporter** utilise la résolution
    choisie. Ouvrir les résultats avec le bouton à droite.

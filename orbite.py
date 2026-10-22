@@ -22,7 +22,7 @@ import multiprocessing
 from concurrent.futures import ProcessPoolExecutor,as_completed
 from render_cache import products,receipt_path,completed,record
 
-from trace_image import trace
+from trace_image import trace,trace_settings
 from themes import (load_theme,list_themes,export_theme,merge_configs,resolve_visual_paths,
                     relative_visual_paths,validate_visual,validate_input,config_fingerprint)
 
@@ -83,8 +83,9 @@ def _process_source(payload):
         c={**style,'title':title,'episode':str(episode),
            'path_id':args.path_id if args.path_id is not None else style.get('path_id'),
            'contours':style.get('contours','all')}
+        if source.suffix.lower()!='.svg':c['contours']='all';c['path_id']=None
         if args.no_audio:c['audio']=False
-        key=hashlib.sha256((digest+args.mode+args.detail+tool_hash).encode()).hexdigest()
+        key=hashlib.sha256((digest+args.mode+args.detail+json.dumps(trace_settings(c.get('trace')),sort_keys=True)+tool_hash).encode()).hexdigest()
         variant=config_fingerprint(c,salt=engine_hash+key)
         job=source_root/'variants'/(slug(style.get('theme_name','personnalise'))+'-'+variant[:10])
         job.mkdir(parents=True,exist_ok=True)
@@ -104,15 +105,22 @@ def _process_source(payload):
         else:
             cache=source_root/'traces'/key[:12];cache.mkdir(parents=True,exist_ok=True)
             vector=cache/'strokes.svg';stamp=cache/'trace_cache.json'
-            if vector.is_file() and stamp.is_file() and json.loads(stamp.read_text()).get('key')==key:
+            cached_info=None
+            if not args.force and vector.is_file() and stamp.is_file():
+                try:
+                    if json.loads(stamp.read_text()).get('key')==key:
+                        cached_info=json.loads(vector.with_suffix('.trace.json').read_text())
+                        if not isinstance(cached_info,dict) or 'mode' not in cached_info:cached_info=None
+                except (OSError,ValueError,TypeError):pass
+            if cached_info is not None:
                 print('  Tracé en cache.',flush=True)
-                result['trace_cached']=True
-                result['mode']=json.loads(vector.with_suffix('.trace.json').read_text()).get('mode')
+                result['trace_cached']=True;result['mode']=cached_info['mode'];result['detection']=cached_info
             else:
-                info=trace(source,vector,mode=args.mode,detail=args.detail)
+                info=trace(source,vector,mode=args.mode,detail=args.detail,options=c.get('trace'))
                 stamp.write_text(json.dumps({'key':key}),encoding='utf-8')
-                result['mode']=info['mode'];result['trace_cached']=False
+                result['mode']=info['mode'];result['trace_cached']=False;result['detection']=info
                 print(f"  {info['strokes']} traits · {info['mode']}",flush=True)
+                for warning in info.get('warnings',[]):print('  Détection : '+warning,flush=True)
         c['svg']=os.path.relpath(vector,job)
         c=relative_visual_paths(c,job)
         config=job/'episode.json'
@@ -145,7 +153,7 @@ def main():
     ap.add_argument('--preview',action='store_true',help='Vidéo légère 540×960, avec le même rythme')
     ap.add_argument('--audio-only',action='store_true',help='Générer seulement la musique (WAV et MP3)')
     ap.add_argument('--stills',action='store_true',help='Trois images fixes, sans encoder de vidéo')
-    ap.add_argument('--mode',choices=['auto','lineart','edges'],default='auto')
+    ap.add_argument('--mode',choices=['auto','lineart','outline','edges'],default='auto')
     ap.add_argument('--detail',choices=['low','medium','high'],default='medium')
     ap.add_argument('--config',help='Personnaliser le style à partir d’un JSON')
     ap.add_argument('--theme',help='cosmos, aurore, papier ou fichier JSON personnalisé')
@@ -189,6 +197,7 @@ def main():
             'background':style['background'],'background_opacity':style['background_opacity'],
             'background_dimming':style['background_dimming'],'fonts':style['fonts'],
             'safe_area':style['safe_area'],'music':style.get('music'),
+            'trace':trace_settings(style.get('trace')),'trace_mode':args.mode,'detail':args.detail,
             'duration_s':sum(style['durations'])+style['intro']+style['outro'],
             'ffmpeg_available':ffmpeg,'inputs':checked},ensure_ascii=False,indent=2))
         return 0 if ok else 1
