@@ -15,7 +15,7 @@ from themes import ROOT,VISUAL_FIELDS,load_theme
 
 class StudioTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.folder=Path(self.temp.name)
+        self.temp=tempfile.TemporaryDirectory();self.folder=Path(self.temp.name).resolve()
         self.state=StudioState.initial();self.state.output=str(self.folder/'output')
     def tearDown(self):self.temp.cleanup()
 

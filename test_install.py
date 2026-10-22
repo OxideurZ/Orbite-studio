@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch,Mock
@@ -19,7 +20,7 @@ META={'app_id':'orbite-studio','schema':1,'version':'0.8.0','repository':manager
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        self.base=Path(self.temp.name);self.root=self.base/'managed';self.source=self.base/'source';self.source.mkdir()
+        self.base=Path(self.temp.name).resolve();self.root=self.base/'managed';self.source=self.base/'source';self.source.mkdir()
         (self.source/'app_version.json').write_text(json.dumps(META))
         for name in ['studio.py','studio_model.py','runtime.py','install.py','requirements.txt']:(self.source/name).write_text('# fixture\n')
         self.data=self.root/'data/projects/session.json';self.data.parent.mkdir(parents=True);self.data.write_text('personal content')
@@ -39,7 +40,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(manager.read_json(self.root/'previous.json'),first)
         self.assertTrue(manager.installed_release(self.root,first).is_dir())
         self.assertEqual(self.data.read_text(),'personal content')
-        self.assertIn(str(self.root),(self.root/'ORBITE.sh').read_text() if os.name!='nt' else (self.root/'ORBITE.cmd').read_text().replace('%~dp0.',str(self.root)))
+        self.assertIn(str(self.root),(self.root/('ORBITE.command' if sys.platform=='darwin' else 'ORBITE.sh')).read_text() if os.name!='nt' else (self.root/'ORBITE.cmd').read_text().replace('%~dp0.',str(self.root)))
 
     def test_dependency_failure_cannot_change_active_version_or_personal_data(self):
         first=self.install();(self.source/'studio.py').write_text('# broken update')

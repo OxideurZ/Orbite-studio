@@ -1,4 +1,4 @@
-"""Adaptive framing, immutable math reuse and a real spawn-based folder workflow."""
+"""Centered framing, original projections, immutable math reuse and a real spawn-based folder workflow."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -32,18 +32,20 @@ class V2Tests(unittest.TestCase):
             self.assertAlmostEqual((b[0]+b[2])/2,540);self.assertAlmostEqual((b[1]+b[3])/2,980)
             self.assertGreater(max(b[2]-b[0],b[3]-b[1]),800)
 
-    def test_landscape_gets_full_width_and_portrait_keeps_rings_separate(self):
+    def test_original_composition_keeps_shared_units_and_straight_projections(self):
         for w,h in [(1000,100),(100,1000),(100,100)]:
             film=self.fixture(f'<rect width="{w}" height="{h}"/>');g=film.composition
-            self.assertEqual(g['landscape'],w/h>1.35)
-            box=g['drawing']['box']
-            if w>h:self.assertGreater(box[2]-box[0],900)
-            else:self.assertLess(g['y']['box'][2],box[0])
-            self.assertLess(g['x']['box'][3],box[1])
-            for a in film.approx.values():
-                b=value_bounds(a,film.pen)*g['drawing']['scale']+np.tile(g['drawing']['center'],2)
-                self.assertGreaterEqual(b[0],box[0]+23.9);self.assertLessEqual(b[2],box[2]-23.9)
-                self.assertGreaterEqual(b[1],box[1]+23.9);self.assertLessEqual(b[3],box[3]-23.9)
+            self.assertEqual(g['drawing']['scale'],g['x']['scale'])
+            self.assertEqual(g['drawing']['scale'],g['y']['scale'])
+            self.assertEqual(g['x']['center'][0],g['drawing']['center'][0])
+            self.assertEqual(g['y']['center'][1],g['drawing']['center'][1])
+            for k in film.c['steps']:
+                for j in [0,123,1000]:
+                    phase=j/len(film.z);ns=np.arange(1,k+1)
+                    x=film.cx[0].real+np.sum(2*abs(film.cx[1:k+1])*np.cos(2*np.pi*ns*phase+np.angle(film.cx[1:k+1])))
+                    y=film.cy[0].real+np.sum(2*abs(film.cy[1:k+1])*np.cos(2*np.pi*ns*phase+np.angle(film.cy[1:k+1])))
+                    self.assertAlmostEqual(x,film.approx[k][j].real)
+                    self.assertAlmostEqual(y,film.approx[k][j].imag)
 
     def test_prefix_bound_covers_high_frequency_tail_between_sampled_phases(self):
         rng=np.random.default_rng(123);count=180

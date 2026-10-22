@@ -1,4 +1,4 @@
-"""Fit the subject independently of the two epicycle panels, in logical pixels."""
+"""Shared-scale circle composition and centered subject fitting in logical pixels."""
 import numpy as np
 
 
@@ -43,14 +43,18 @@ def chain_bounds(coeff,count,rotation=0,phases=1024,explicit_terms=128):
     return union_bounds([low,high])
 
 
-def adaptive_composition(z,pen,approximations,cx,cy,count):
-    original=value_bounds(z,pen);aspect=(original[2]-original[0])/max(original[3]-original[1],1e-9)
-    landscape=bool(aspect>1.35)
-    if landscape:
-        plot=(70,990,1010,1470);xbox=(555,585,1010,920);ybox=(70,585,475,920)
-    else:
-        plot=(365,805,1010,1460);xbox=(365,510,1010,770);ybox=(50,830,320,1450)
-    envelope=union_bounds([original,*[value_bounds(a,pen) for a in approximations.values()]])
-    return {'landscape':landscape,'drawing':fit_bounds(envelope,plot,24),
-            'x':fit_bounds(chain_bounds(cx,count),xbox,10),
-            'y':fit_bounds(chain_bounds(cy,count,np.pi/2),ybox,10)}
+def adaptive_composition(z,pen,approximations,cx,cy,count,geometry):
+    """Original shared-scale composition: horizontal/vertical straight projections.
+
+    A common display unit is essential: X circles end at the pencil's x and Y
+    circles end at its y. Preserve this geometry rather than enlarging the drawing
+    independently, which would require distracting elbow connectors.
+    """
+    center=list(geometry['center'])
+    def panel(coeff,rotation,translation):
+        b=chain_bounds(coeff,count,rotation)+np.tile(translation,2)
+        return {'center':list(translation),'scale':1.,'box':b.tolist(),'padding':0}
+    return {'landscape':False,'drawing':{'center':center,'scale':1.,
+                'box':[365,805,1010,1460],'padding':0},
+            'x':panel(cx,0,[center[0],geometry['x_root_y']]),
+            'y':panel(cy,np.pi/2,[geometry['y_root_x'],center[1]])}

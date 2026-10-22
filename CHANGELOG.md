@@ -1,5 +1,11 @@
 # Changements
 
+## 2.0.1 — 22 octobre 2026
+
+- Retour à la composition d’origine : cercles et sujet à la même échelle,
+  projections droites, sans raccords en escalier. Priorité aux anneaux et à
+  l’équilibre du dessin. Le centrage corrigé et les optimisations sont conservés.
+
 ## 2.0.0 — 22 octobre 2026
 
 - Cadrage adaptatif : sujet agrandi, panneaux de cercles indépendants et disposition

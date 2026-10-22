@@ -30,7 +30,7 @@ from studio_model import StudioState,PreviewBuilder,TaskRunner,palette_from_imag
 from themes import ROOT,load_theme,list_themes,resolve_visual_paths,merge_configs
 
 BG='#101624';PANEL='#172134';INK='#e9edf7';MUTED='#9aaac1';ACCENT='#84dfe6'
-LAYOUTS={'Adaptatif · dessin maximal':'classic_large','Original':'classic','Épuré':'balanced','Minimal':'minimal'}
+LAYOUTS={'Classique · grands cercles':'classic_large','Original':'classic','Épuré':'balanced','Minimal':'minimal'}
 MODES={'Automatique':'auto','Dessin au trait':'lineart','Contours photo':'edges'}
 DETAILS={'Peu de détails':'low','Détails moyens':'medium','Détails fins':'high'}
 QUALITIES={'Réseaux · 1080 × 1920':'social','Master · 1440 × 2560 + 1080':'master'}

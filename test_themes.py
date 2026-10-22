@@ -20,7 +20,7 @@ from themes import (ROOT,DEFAULT_FONTS,VISUAL_DEFAULTS,load_theme,list_themes,
 class ThemeTests(unittest.TestCase):
     def setUp(self):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup)
-        self.tmp=Path(tmp.name)
+        self.tmp=Path(tmp.name).resolve()
 
     def theme(self,data,name='theme.json'):
         file=self.tmp/name;file.parent.mkdir(parents=True,exist_ok=True)

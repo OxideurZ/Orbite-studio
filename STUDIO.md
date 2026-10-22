@@ -129,12 +129,13 @@ contrôlée en 1060 × 760 et 1240 × 930.
 
 ## V2 : cadrage et performances
 
-Dans **Animation → Disposition**, choisir **Adaptatif · dessin maximal** (mode par
-défaut des nouveaux projets). Les dessins larges utilisent une zone horizontale ;
-les deux panneaux de cercles restent à part. Les échelles d’affichage des panneaux
-et du dessin sont indépendantes, mais leurs valeurs de Fourier et la projection
-restent les mêmes. Les cercles restent ronds. Les plans de début et de fin sont
-centrés sur le tracé visible avec un padding ; le zoom final reste réglable.
+Dans **Animation → Disposition**, choisir **Classique · grands cercles** (mode par
+défaut des nouveaux projets). Ce mode conserve la disposition d’origine :
+cercles bien visibles au-dessus et à gauche, fonctions sinus et cosinus, et deux
+projections droites qui se croisent exactement au point du dessin. Les cercles
+et le sujet partagent la même échelle ; le dessin reste plus petit si nécessaire
+pour garder cet équilibre. Les plans de début et de fin sont centrés sur le tracé
+visible avec un padding ; le zoom final reste réglable.
 Les anciens projets gardent la disposition qu’ils ont enregistrée.
 
 Dans **Export → Calcul et cache**, **Auto** traite au plus deux images d’un dossier
@@ -147,7 +148,7 @@ Relancer exactement le même export réutilise ses sorties terminées. Une inter
 un fichier manquant ou modifié entraîne un nouveau calcul. Cocher **Forcer** pour
 tout recalculer. Une modification de source, thème, texte, cadence, résolution ou
 moteur crée un résultat distinct. Les exports existants ne sont pas supprimés.
-Le premier export après migration sera recalculé pour appliquer le nouveau cadrage.
+Le premier export après migration sera recalculé pour appliquer les corrections.
 
 Les textes et couleurs de l’aperçu peuvent être ajustés sans refaire l’analyse SVG
 et Fourier. Le rendu réutilise les couches fixes ; l’audio seul évite la préparation

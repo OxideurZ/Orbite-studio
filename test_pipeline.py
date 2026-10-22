@@ -77,26 +77,24 @@ class PipelineTests(unittest.TestCase):
                         steps=[1,2,3,6,12,32,96,256,768])
         before,_,_=load_contour(original)
         c=json.loads((ROOT/'examples/portrait_grand.json').read_text())
-        c={**DEFAULT,**c};c['background']='';c['svg']=str(ROOT/'examples/portrait.svg')
-        film=Film(c,270,480);g=film.composition;drawing=g['drawing']
-        self.assertGreater(np.ptp(film.z.real)*drawing['scale']/np.ptp(before.real),1.5)
-        # A dense independent sweep of all prefix circumferences fits each panel.
-        for coeff,rotation,panel in [(film.cx,0,g['x']),(film.cy,np.pi/2,g['y'])]:
-            k=max(c['steps']);r=2*abs(coeff[1:k+1]);ns=np.arange(1,k+1)
-            ts=np.arange(2048)/2048
+        c['svg']=str(ROOT/'examples/portrait.svg')
+        after,_,info=load_contour(c)
+        self.assertGreater(np.ptp(after.real)/np.ptp(before.real),1.05)
+        center=info['geometry']['center']
+        top=center[1]+after.imag.min();left=center[0]+after.real.min()
+        # Circumferences of every displayed prefix, tested throughout a complete rotation.
+        for values,rotation,root in [(after.real,0,complex(center[0],info['geometry']['x_root_y'])),
+              (after.imag,np.pi/2,complex(info['geometry']['y_root_x'],center[1]))]:
+            coeff=np.fft.rfft(values)/len(values);k=max(c['steps'])
+            ns=np.arange(1,k+1);r=2*abs(coeff[1:k+1])
+            ts=np.linspace(0,1,1536)
             v=r[:,None]*np.exp(1j*(2*np.pi*ns[:,None]*ts+np.angle(coeff[1:k+1,None])+rotation))
-            starts=np.vstack([np.zeros((1,len(ts)),complex),np.cumsum(v,axis=0)[:-1]])
-            starts+=coeff[0].real*np.exp(1j*rotation)
-            scaled=starts*panel['scale']+complex(*panel['center']);r=r[:,None]*panel['scale']
-            left,top,right,bottom=panel['box']
-            self.assertGreaterEqual(float((scaled.real-r).min()),left)
-            self.assertLessEqual(float((scaled.real+r).max()),right)
-            self.assertGreaterEqual(float((scaled.imag-r).min()),top)
-            self.assertLessEqual(float((scaled.imag+r).max()),bottom)
-        self.assertLess(g['x']['box'][3],drawing['box'][1])
-        self.assertLess(g['y']['box'][2],drawing['box'][0])
+            p=np.vstack([np.zeros((1,len(ts)),complex),np.cumsum(v,axis=0)[:-1]])
+            p+=root+coeff[0].real*(1 if rotation==0 else 1j)
+            if rotation==0:
+                self.assertLess(float((p.imag+r[:,None]).max()),top-20)
+            else:
+                self.assertLess(float((p.real+r[:,None]).max()),left-20)
 
 
-
-if __name__=='__main__':
-    unittest.main()
+if __name__=='__main__':unittest.main()

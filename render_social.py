@@ -187,11 +187,6 @@ def _load_contour(c):
     pen = pen_edges[edge]
     center = (z.real.max()+z.real.min())/2+1j*(z.imag.max()+z.imag.min())/2
     z -= center
-    if c.get('layout')=='classic_large':
-        # Keep geometry independent of panel sizes; the composition fits each panel.
-        scale=350/max(np.ptp(z.real),np.ptp(z.imag),1e-8);z*=scale
-        return z,pen,{'available_components':count,'selected_components':len(components),
-                     'pen_down_fraction':float(pen.mean()),'normalization_scale':float(scale)}
     # Legacy layouts retain their common drawing/chain unit scale.
     x,y = np.fft.rfft(z.real)/len(z),np.fft.rfft(z.imag)/len(z)
     large=c.get('layout')=='classic_large'
@@ -297,7 +292,7 @@ class Film:
         self.last=max(c['steps'])
         self.minimal_hero_scale=min(c['hero_scale'],600/max(np.ptp(self.z.real),1e-8),800/max(np.ptp(self.z.imag),1e-8))
         self._chain_cache={};self._signal_cache={};self._stage_cache=OrderedDict();self._hero=None
-        self.composition=adaptive_composition(self.z,self.pen,self.approx,self.cx,self.cy,self.last) if visual and c.get('layout')=='classic_large' else None
+        self.composition=adaptive_composition(self.z,self.pen,self.approx,self.cx,self.cy,self.last,self.info['geometry']) if visual and c.get('layout')=='classic_large' else None
         if self.composition:self.info['composition']=self.composition
 
     def background(self):
@@ -464,9 +459,8 @@ class Film:
         ex=self.chain(cv,self.cx,k,phase,(xr['center'][0]+self.cx[0].real*xs,xr['center'][1]),0,col['x'],display_scale=xs)
         ey=self.chain(cv,self.cy,k,phase,(yr['center'][0],yr['center'][1]+self.cy[0].real*ys),np.pi/2,col['y'],display_scale=ys)
         pen=(center[0]+scale*(ex.real-xr['center'][0])/xs,center[1]+scale*(ey.imag-yr['center'][1])/ys)
-        guide_y=960 if landscape else 790;guide_x=50 if landscape else 345
-        cv.line([(ex.real,ex.imag),(ex.real,guide_y),(pen[0],guide_y),pen],mix(col['background'],col['x'],.43),1)
-        cv.line([(ey.real,ey.imag),(guide_x,ey.imag),(guide_x,pen[1]),pen],mix(col['background'],col['y'],.43),1)
+        cv.line([(ex.real,ex.imag),pen],mix(col['background'],col['x'],.52),1)
+        cv.line([(ey.real,ey.imag),pen],mix(col['background'],col['y'],.52),1)
         self.draw_trace(cv,a,center,scale,col['trace'],1.7,upto=phase);self.constellation(cv,a,t,phase,center=center,factor=scale)
         j=min(int(phase*len(a)),len(a)-1)
         if self.pen[j]:cv.circle(pen,8,col['trace'],1);cv.circle(pen,3.5,col['ink'],fill=col['ink'])
