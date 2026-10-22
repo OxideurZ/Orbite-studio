@@ -1,0 +1,46 @@
+{
+  "brand": "ORBITE",
+  "layout": "classic_large",
+  "samples": 32768,
+  "steps": [
+    1,
+    2,
+    3,
+    6,
+    12,
+    32,
+    96,
+    256,
+    768
+  ],
+  "durations": [
+    1.5,
+    1.5,
+    2,
+    2,
+    2.5,
+    3,
+    3.5,
+    4.5,
+    7
+  ],
+  "intro": 1,
+  "outro": 4.5,
+  "hero_scale": 3,
+  "background_opacity": 0.45,
+  "captions": {
+    "early": "On additionne des rotations.",
+    "middle": "Plus de fréquences, plus de détails.",
+    "late": "x(t) et y(t) placent le point."
+  },
+  "music": {
+    "mode": "generative",
+    "style": "orbital",
+    "variation": 0,
+    "tempo": 0,
+    "density": 0.55,
+    "brightness": 0.35,
+    "space": 0.35,
+    "target_lufs": -18.0
+  }
+}

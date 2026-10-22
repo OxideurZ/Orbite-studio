@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="300" viewBox="0 0 1100 300">
+  <title>ORBITE — le dessin des fréquences</title>
+  <rect width="1100" height="300" fill="#090d20"/>
+  <g fill="none" stroke-width="3">
+    <circle cx="125" cy="145" r="60" stroke="#82e4ff"/>
+    <circle cx="160" cy="145" r="60" stroke="#b6a1ff"/>
+  </g>
+  <circle cx="163" cy="86" r="6" fill="#f2efff"/>
+  <text x="264" y="157" fill="#f2efff" font-family="DejaVu Sans,sans-serif" font-size="76" font-weight="bold" letter-spacing="14">ORBITE</text>
+  <text x="268" y="209" fill="#9aa6c9" font-family="DejaVu Sans,sans-serif" font-size="22" letter-spacing="3">LE DESSIN DES FRÉQUENCES</text>
+</svg>

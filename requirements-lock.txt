@@ -1,0 +1,7 @@
+# Snapshot testé avec Python 3.12 sur Linux ; l’installateur utilise requirements.txt pour les autres versions.
+numpy==2.5.4
+Pillow==13.0.0
+svgpathtools==1.8.0
+scipy==1.18.1
+svgwrite==1.4.3
+imageio-ffmpeg==0.6.0

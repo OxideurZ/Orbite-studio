@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-120 -120 240 240">
+  <title>Étoile à cinq branches — exemple ORBITE</title>
+  <path id="etoile" fill="none" stroke="#e4c9ff" d="M0,-100 L23.511,-32.361 L95.106,-30.902 L38.042,12.361 L58.779,80.902 L0,40 L-58.779,80.902 L-38.042,12.361 L-95.106,-30.902 L-23.511,-32.361 Z"/>
+</svg>

@@ -1,0 +1,12 @@
+{
+  "brand": "ORBITE",
+  "layout": "minimal",
+  "samples": 32768,
+  "steps": [1, 5, 16, 64, 256, 768],
+  "durations": [1.4, 2.6, 3, 3.5, 4.5, 7],
+  "intro": 1,
+  "outro": 4.5,
+  "hero_scale": 3,
+  "background_opacity": 0.42,
+  "captions": {"early": "La silhouette.", "middle": "La structure.", "late": "Les détails."}
+}

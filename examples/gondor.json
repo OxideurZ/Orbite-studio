@@ -1,0 +1,27 @@
+{
+  "brand": "ORBITE",
+  "tagline": "LE DESSIN DES FRÉQUENCES",
+  "episode": "001",
+  "title": "L’Arbre blanc",
+  "svg": "gondor.svg",
+  "path_id": "white_tree",
+  "contours": "largest",
+  "samples": 8192,
+  "steps": [1, 2, 3, 6, 12, 24, 64, 160, 384],
+  "durations": [1.5, 1.5, 2, 2, 2.5, 3, 3.5, 4, 6.5],
+  "intro": 1,
+  "outro": 4.5,
+  "background": "../assets/montagnes_orbite.png",
+  "background_opacity": 0.45,
+  "colors": {
+    "background": "#090d20",
+    "ink": "#f2efff",
+    "muted": "#9aa6c9",
+    "trace": "#e4c9ff",
+    "x": "#82e4ff",
+    "y": "#b6a1ff"
+  },
+  "audio": true,
+  "captions": {"early": "La silhouette.", "middle": "Les branches.", "late": "Les détails."},
+  "source_credit": "Escudo Gondor.svg — Wikimedia Commons; Vëon Menelion / Luigi Chiesa; fichier indiqué domaine public. https://commons.wikimedia.org/wiki/File:Escudo_Gondor.svg"
+}

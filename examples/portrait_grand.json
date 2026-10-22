@@ -1,0 +1,46 @@
+{
+  "brand": "ORBITE",
+  "tagline": "LE DESSIN DES FRÉQUENCES",
+  "episode": "003",
+  "title": "Portrait géométrique",
+  "svg": "portrait.svg",
+  "path_id": null,
+  "contours": "all",
+  "layout": "classic_large",
+  "samples": 32768,
+  "steps": [
+    1,
+    2,
+    3,
+    6,
+    12,
+    32,
+    96,
+    256,
+    768
+  ],
+  "durations": [
+    1.5,
+    1.5,
+    2,
+    2,
+    2.5,
+    3,
+    3.5,
+    4.5,
+    7
+  ],
+  "intro": 1,
+  "outro": 4.5,
+  "hero_scale": 2.2,
+  "final_title": "Un dessin.\nDes fréquences.",
+  "background": "../assets/montagnes_orbite.png",
+  "background_opacity": 0.45,
+  "captions": {
+    "early": "La silhouette.",
+    "middle": "Les traits.",
+    "late": "Le regard."
+  },
+  "audio": true,
+  "source_credit": "Exemple géométrique créé pour ORBITE Studio."
+}

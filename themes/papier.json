@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Papier",
+  "description": "Fond crème, encre sombre, accents pétrole et terre cuite.",
+  "brand": "ORBITE",
+  "colors": {
+    "background": "#f6f2ea",
+    "ink": "#15232d",
+    "muted": "#5f6b72",
+    "trace": "#353a44",
+    "x": "#1a6b7a",
+    "y": "#a65d4d"
+  },
+  "background": "",
+  "background_opacity": 0,
+  "background_dimming": {
+    "top": 0,
+    "bottom": 0
+  },
+  "safe_area": {
+    "enabled": false,
+    "left": 48,
+    "right": 180,
+    "top": 240,
+    "bottom": 440
+  }
+}

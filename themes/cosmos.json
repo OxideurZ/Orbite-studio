@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Cosmos",
+  "description": "Identité ORBITE : nuit, montagnes, bleu glacier et violet.",
+  "brand": "ORBITE",
+  "tagline": "LE DESSIN DES FRÉQUENCES",
+  "colors": {
+    "background": "#090d20",
+    "ink": "#f2efff",
+    "muted": "#9aa6c9",
+    "trace": "#e4c9ff",
+    "x": "#82e4ff",
+    "y": "#b6a1ff"
+  },
+  "background": "../assets/montagnes_orbite.png",
+  "background_opacity": 0.45,
+  "background_dimming": {
+    "top": 0.25,
+    "bottom": 0.03
+  },
+  "fonts": {
+    "sans": "../fonts/DejaVuSans.ttf",
+    "bold": "../fonts/DejaVuSans-Bold.ttf",
+    "serif": "../fonts/DejaVuSerif.ttf"
+  },
+  "safe_area": {
+    "enabled": false,
+    "left": 48,
+    "right": 180,
+    "top": 240,
+    "bottom": 440
+  }
+}

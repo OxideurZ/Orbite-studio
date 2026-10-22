@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Aurore",
+  "description": "Fond uni bleu profond, axes menthe et corail, tracé ivoire.",
+  "brand": "ORBITE",
+  "colors": {
+    "background": "#071c24",
+    "ink": "#f8f4e6",
+    "muted": "#a0b9b8",
+    "trace": "#ffe3b3",
+    "x": "#70e0bf",
+    "y": "#ffad9b"
+  },
+  "background": "",
+  "background_opacity": 0,
+  "background_dimming": {
+    "top": 0,
+    "bottom": 0
+  },
+  "safe_area": {
+    "enabled": false,
+    "left": 48,
+    "right": 180,
+    "top": 240,
+    "bottom": 440
+  }
+}

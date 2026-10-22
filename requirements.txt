@@ -1,0 +1,5 @@
+numpy>=1.24
+Pillow>=10
+svgpathtools>=1.6
+scipy>=1.10
+imageio-ffmpeg>=0.6
