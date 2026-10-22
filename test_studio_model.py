@@ -26,6 +26,7 @@ class StudioTests(unittest.TestCase):
 
     def test_project_roundtrip_all_fields_and_relative_paths(self):
         s=self.state;s.source=str(ROOT/'examples/portrait.svg');s.fps=25;s.recursive=True
+        s.jobs=2;s.force=True
         s.config['title']='Un autre ciel';s.config['extension_future']={'value':42}
         s.config['captions']['late']='Les détails arrivent.'
         file=self.folder/'session.json';s.save_project(file)

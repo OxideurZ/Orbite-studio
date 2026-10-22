@@ -126,3 +126,29 @@ styles, la palette, les étapes, le JSON, les sauvegardes, le rechargement et la
 vérification du moteur, la génération audio et le bouton de lecture
 (lecteur simulé pour le test), sans exporter de vidéo. L’interface a aussi été
 contrôlée en 1060 × 760 et 1240 × 930.
+
+## V2 : cadrage et performances
+
+Dans **Animation → Disposition**, choisir **Adaptatif · dessin maximal** (mode par
+défaut des nouveaux projets). Les dessins larges utilisent une zone horizontale ;
+les deux panneaux de cercles restent à part. Les échelles d’affichage des panneaux
+et du dessin sont indépendantes, mais leurs valeurs de Fourier et la projection
+restent les mêmes. Les cercles restent ronds. Les plans de début et de fin sont
+centrés sur le tracé visible avec un padding ; le zoom final reste réglable.
+Les anciens projets gardent la disposition qu’ils ont enregistrée.
+
+Dans **Export → Calcul et cache**, **Auto** traite au plus deux images d’un dossier
+simultanément si la machine possède au moins quatre processeurs logiques. Choisir
+**1** pour réduire l’usage mémoire, ou **3/4** sur une machine bien équipée.
+Une image seule utilise un seul traitement. Ce mécanisme utilise des processus
+compatibles avec macOS, Windows et Linux ; il ne nécessite pas de GPU.
+
+Relancer exactement le même export réutilise ses sorties terminées. Une interruption,
+un fichier manquant ou modifié entraîne un nouveau calcul. Cocher **Forcer** pour
+tout recalculer. Une modification de source, thème, texte, cadence, résolution ou
+moteur crée un résultat distinct. Les exports existants ne sont pas supprimés.
+Le premier export après migration sera recalculé pour appliquer le nouveau cadrage.
+
+Les textes et couleurs de l’aperçu peuvent être ajustés sans refaire l’analyse SVG
+et Fourier. Le rendu réutilise les couches fixes ; l’audio seul évite la préparation
+graphique. Le gain réel dépend du dessin, de la résolution et de l’ordinateur.

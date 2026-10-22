@@ -1,7 +1,7 @@
 {
   "app_id": "orbite-studio",
   "schema": 1,
-  "version": "0.8.0",
+  "version": "2.0.0",
   "repository": "OxideurZ/Orbite-studio",
   "branch": "main",
   "python_min": [3, 10]

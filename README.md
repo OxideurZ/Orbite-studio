@@ -50,6 +50,8 @@ précédente. Les mises à jour suivent les commits publiés sur `main`.
 - Écoute audio seule avant de produire une vidéo.
 - Export vertical 1080 × 1920 ou 1440 × 2560, cadence personnalisable.
 - Projets enregistrables et thèmes importables/exportables.
+- Cadrage adaptatif qui agrandit les sujets et sépare les anneaux du dessin.
+- Cache des exports et traitement des dossiers en parallèle (réglable dans Export).
 
 Les marges sociales sont **désactivées par défaut** et activables dans Animation.
 Les photos sont converties en contours ; contrôler les images fixes avant export.

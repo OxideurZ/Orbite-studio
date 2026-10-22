@@ -12,6 +12,10 @@ import math
 import shutil
 import subprocess
 import wave
+from collections import OrderedDict
+from copy import deepcopy
+import hashlib
+from composition import adaptive_composition,fit_bounds,value_bounds
 from runtime import require_ffmpeg
 from pathlib import Path
 
@@ -117,7 +121,20 @@ def svg_paths(filename, path_id=None):
     return paths
 
 
+GEOMETRY_CACHE=OrderedDict()
+
+
 def load_contour(c):
+    key=(hashlib.sha256(Path(c['svg']).read_bytes()).hexdigest(),c['path_id'],c['contours'],c['samples'],c.get('layout'),max(c['steps']))
+    if key not in GEOMETRY_CACHE:
+        GEOMETRY_CACHE[key]=_load_contour(c)
+        if len(GEOMETRY_CACHE)>4:GEOMETRY_CACHE.popitem(last=False)
+    GEOMETRY_CACHE.move_to_end(key)
+    z,pen,info=GEOMETRY_CACHE[key]
+    return z.copy(),pen.copy(),deepcopy(info)
+
+
+def _load_contour(c):
     paths = svg_paths(c['svg'],c['path_id'])
     components = [p for path in paths for p in path.continuous_subpaths() if p.length()>1e-9]
     if not components:
@@ -170,7 +187,12 @@ def load_contour(c):
     pen = pen_edges[edge]
     center = (z.real.max()+z.real.min())/2+1j*(z.imag.max()+z.imag.min())/2
     z -= center
-    # Fit drawing and BOTH entire circle chains, including circle circumference.
+    if c.get('layout')=='classic_large':
+        # Keep geometry independent of panel sizes; the composition fits each panel.
+        scale=350/max(np.ptp(z.real),np.ptp(z.imag),1e-8);z*=scale
+        return z,pen,{'available_components':count,'selected_components':len(components),
+                     'pen_down_fraction':float(pen.mean()),'normalization_scale':float(scale)}
+    # Legacy layouts retain their common drawing/chain unit scale.
     x,y = np.fft.rfft(z.real)/len(z),np.fft.rfft(z.imag)/len(z)
     large=c.get('layout')=='classic_large'
     balanced=c.get('layout')=='balanced'
@@ -219,11 +241,16 @@ class Canvas:
         self.s=im.width/1080*scale
         self.offset=tuple(v*im.width/1080 for v in offset)
         self.fonts=fonts or DEFAULT_FONTS
-        self.cache={}
+        self.cache={};self._last_points=None;self._last_coords=None
     def xy(self,p): return tuple(float(a)*self.s+self.offset[i%2] for i,a in enumerate(p))
     def line(self,p,color,width=1):
         if len(p)>1:
-            self.draw.line([self.xy(q) for q in p],fill=color,width=max(1,round(width*self.s)),joint='curve')
+            if p is self._last_points:coords=self._last_coords
+            elif isinstance(p,np.ndarray) and len(p)>8:
+                coords=[tuple(q) for q in (p*self.s+np.array(self.offset)).tolist()]
+            else:coords=[self.xy(q) for q in p]
+            self._last_points=p;self._last_coords=coords
+            self.draw.line(coords,fill=color,width=max(1,round(width*self.s)),joint='curve')
     def circle(self,xy,r,color,width=1,fill=None):
         x,y=xy
         self.draw.ellipse(self.xy((x-r,y-r,x+r,y+r)),outline=color,fill=fill,
@@ -244,30 +271,34 @@ def font_for(fonts,size,kind='sans'):
 
 
 class Film:
-    def __init__(self,c,width,height):
+    def __init__(self,c,width,height,visual=True):
         self.c=c; self.w=width; self.h=height; self.colors=c['colors']
         self.z,self.pen,self.info=load_contour(c)
         self.cx=np.fft.rfft(self.z.real)/len(self.z)
         self.cy=np.fft.rfft(self.z.imag)/len(self.z)
         self.ends=np.cumsum(c['durations'])+c['intro']
         self.total=float(self.ends[-1]+c['outro'])
-        self.approx={};self.errors={}
-        for k in c['steps']:
+        self.approx={};self.errors={};self.visual=visual
+        for k in c['steps'] if visual else []:
             x,y=self.cx.copy(),self.cy.copy();x[k+1:]=0;y[k+1:]=0
             a=np.fft.irfft(x*len(self.z),n=len(self.z))+1j*np.fft.irfft(y*len(self.z),n=len(self.z))
             self.approx[k]=a
             self.errors[k]=float(np.sqrt(np.mean(abs(a[self.pen]-self.z[self.pen])**2)))
+        if not visual:
+            self.last=max(c['steps']);self.bg=None;return
         self.bg=self.background()
         self.grid=np.arange(0,len(self.z),2)
-        visible=np.array([self.pen[j] and (j==0 or np.all(self.pen[max(0,j-2):j+1])) for j in self.grid])
+        visible=(self.pen & np.r_[True,self.pen[:-1]] & np.r_[True,True,self.pen[:-2]])[self.grid]
         cuts=np.flatnonzero(np.diff(np.r_[False,visible,False]))
         self.visible_runs=[self.grid[a:b] for a,b in zip(cuts[::2],cuts[1::2])]
         self.star_ids=np.unique(np.r_[np.linspace(0,len(self.z)-1,64,dtype=int),
             np.argmin(self.z.real),np.argmax(self.z.real),np.argmin(self.z.imag),np.argmax(self.z.imag)])
         self.final_transition=None
         self.last=max(c['steps'])
-        self.minimal_hero_scale=min(c['hero_scale'],600/max(np.ptp(self.z.real),1e-8),
-                                    800/max(np.ptp(self.z.imag),1e-8))
+        self.minimal_hero_scale=min(c['hero_scale'],600/max(np.ptp(self.z.real),1e-8),800/max(np.ptp(self.z.imag),1e-8))
+        self._chain_cache={};self._signal_cache={};self._stage_cache=OrderedDict();self._hero=None
+        self.composition=adaptive_composition(self.z,self.pen,self.approx,self.cx,self.cy,self.last) if visual and c.get('layout')=='classic_large' else None
+        if self.composition:self.info['composition']=self.composition
 
     def background(self):
         # Original astrophotography artwork, dimmed under the scientific visualization.
@@ -333,29 +364,114 @@ class Film:
                 cv.line([(x,y-ray),(x,y+ray)],raycol,1)
                 cv.circle((x,y),radius,color,fill=color)
 
-    def chain(self,cv,c,k,phase,root,rotation,color,quiet=False):
-        n=np.arange(1,k+1);r=2*abs(c[1:k+1])
-        v=r*np.exp(1j*(2*np.pi*n*phase+np.angle(c[1:k+1])+rotation))
-        p=complex(*root)+np.r_[0,np.cumsum(v)]
-        for j,rad in enumerate(r):
-            a,b=p[j],p[j+1]
-            if rad>=.65:
-                cv.circle((a.real,a.imag),rad,mix(self.colors['background'],color,.24 if quiet else .33),1)
-            if rad>=.2:
-                ray=mix(self.colors['background'],color,.74) if quiet else mix(color,self.colors['ink'],.18)
-                cv.line([(a.real,a.imag),(b.real,b.imag)],ray,1.4 if rad>3 else 1)
+    def chain(self,cv,c,k,phase,root,rotation,color,quiet=False,display_scale=1):
+        key=(id(c),k,rotation,display_scale,color,quiet)
+        if key not in self._chain_cache:
+            n=np.arange(1,k+1);r=2*abs(c[1:k+1])
+            self._chain_cache[key]=(n,r,np.angle(c[1:k+1])+rotation,
+                np.flatnonzero(r*display_scale>=.2),mix(self.colors['background'],color,.24 if quiet else .33),
+                mix(self.colors['background'],color,.74) if quiet else mix(color,self.colors['ink'],.18))
+        n,r,angle,visible,outline,ray=self._chain_cache[key]
+        p=complex(*root)+np.r_[0,np.cumsum(r*np.exp(1j*(2*np.pi*n*phase+angle)))]*display_scale
+        for j in visible:
+            a,b=p[j],p[j+1];radius=r[j]*display_scale
+            if radius>=.65:cv.circle((a.real,a.imag),radius,outline,1)
+            cv.line([(a.real,a.imag),(b.real,b.imag)],ray,1.4 if radius>3 else 1)
         cv.circle((p[-1].real,p[-1].imag),4,color,fill=color)
         return p[-1]
 
-    def signal(self,cv,v,phase,root,color,label,label_size=21,width=270):
-        x,y=root;w=width
-        cv.text((x,y-62),label,label_size,color)
-        cv.line([(x,y),(x+w,y)],mix(self.colors['background'],color,.2))
-        a=v[::24];a=a/max(abs(v).max(),1)*28
-        p=np.column_stack((x+np.linspace(0,w,len(a)),y+a))
-        cv.line(p,mix(self.colors['background'],color,.3),1)
-        cv.line(p[:max(2,int(phase*len(p)))],color,2)
-        cv.circle((x+phase*w,y+np.interp(phase,np.linspace(0,1,len(a)),a)),3,color,fill=color)
+    def signal(self,cv,v,phase,root,color,label,label_size=21,width=270,part='all'):
+        key=(id(v.base) if v.base is not None else id(v),v.strides,root,width)
+        if key not in self._signal_cache:
+            x,y=root;a=v[::24]/max(abs(v).max(),1)*28
+            self._signal_cache[key]=np.column_stack((x+np.linspace(0,width,len(a)),y+a))
+        p=self._signal_cache[key];x,y=root
+        if part!='dynamic':
+            cv.text((x,y-62),label,label_size,color)
+            cv.line([(x,y),(x+width,y)],mix(self.colors['background'],color,.2))
+            cv.line(p,mix(self.colors['background'],color,.3),1)
+        if part!='static':
+            cv.line(p[:max(2,int(phase*len(p)))],color,2)
+            at=phase*(len(p)-1);j=min(int(at),len(p)-2);height=p[j,1]+(p[j+1,1]-p[j,1])*(at-j)
+            cv.circle((x+phase*width,height),3,color,fill=color)
+
+    def restyle(self,c):
+        self.c=c;self.colors=c['colors'];self.ends=np.cumsum(c['durations'])+c['intro'];self.total=float(self.ends[-1]+c['outro'])
+        self.bg=self.background();self._chain_cache.clear();self._signal_cache.clear();self._stage_cache.clear();self.final_transition=None;self._hero=None
+
+    def hero_transform(self):
+        if self._hero is None:
+            a=self.approx[self.last];bbox=value_bounds(a,self.pen)
+            hero=fit_bounds(bbox,(85,500,995,1460),36)
+            drawing=self.composition['drawing'] if self.composition else {'scale':1.}
+            hero['scale']=min(hero['scale'],drawing['scale']*self.c['hero_scale'])
+            hero['center']=[540-hero['scale']*(bbox[0]+bbox[2])/2,980-hero['scale']*(bbox[1]+bbox[3])/2]
+            self._hero=hero
+        return self._hero
+
+    def frame_hero(self,t):
+        im=self.bg.copy();cv=Canvas(im,self.c.get('fonts'),safe_settings(self.c.get('safe_area')));col=self.colors
+        a=self.approx[self.last];hero=self.hero_transform()
+        drawing=self.composition['drawing'] if self.composition else {'center':self.info.get('geometry',{}).get('center',[690,1180]),'scale':1.}
+        intro=t<self.c['intro']
+        if intro:
+            title=f'Ce dessin cache\n{2*self.last} cercles.';subtitle='REGARDE LES FRÉQUENCES DESSINER.'
+            scale=hero['scale'];center=hero['center'];opacity=float(smooth(t/.24))
+        else:
+            title=self.c['final_title'];subtitle=self.c['title'].upper();opacity=1
+            amount=float(smooth((t-self.ends[-1])/.8))
+            scale=drawing['scale']+(hero['scale']-drawing['scale'])*amount
+            center=np.array(drawing['center'])+(np.array(hero['center'])-drawing['center'])*amount
+        self.brand(cv);cv.text((84,257),title,49,col['ink'],kind='bold');cv.text((86,425),subtitle,20,col['x'])
+        self.draw_trace(cv,a,center,scale,mix(col['background'],col['trace'],opacity),1.7)
+        self.constellation(cv,a,t,center=center,factor=scale,opacity=opacity)
+        cv.text((86,1505),f"1 → {self.last} cercles par axe",28,col['ink']);cv.text((86,1555),self.c['tagline'],18,col['muted'])
+        cv.line([(86,1612),(995,1612)],mix(col['background'],col['trace'],.28))
+        cv.text((86,1635),self.c['brand']+'  /  '+self.c['episode'],17,col['muted'])
+        if not intro and t-self.ends[-1]<.65:
+            if self.final_transition is None:self.final_transition=self.frame(float(self.ends[-1]-.00001))
+            im=Image.blend(self.final_transition,im,float(smooth((t-self.ends[-1])/.65)))
+        return im
+
+    def frame_adaptive(self,t):
+        i,k,phase=self.state(t);a=self.approx[k];g=self.composition;col=self.colors
+        landscape=g['landscape'];drawing=g['drawing'];center=drawing['center'];scale=drawing['scale']
+        signals=[(a.real,(85,520) if landscape else (85,610),col['x'],'x(t) · cos'),
+                 (a.imag,(690,520) if landscape else (85,745),col['y'],'y(t) · sin')]
+        if k not in self._stage_cache:
+            base=self.bg.copy();cv=Canvas(base,self.c.get('fonts'),safe_settings(self.c.get('safe_area')))
+            self.brand(cv);cv.text((83,244),self.c['title'],44,col['ink'],kind='serif');cv.text((86,305),self.c['tagline'],18,col['muted'])
+            cv.text((84,350),f'{k:03d}',64,col['trace'],kind='bold')
+            cv.text((300 if k>=1000 else 254,376),'CERCLES / AXE',21,col['muted'])
+            cv.text((995,380),f'{i+1:02d} / {len(self.c["steps"]):02d}',18,col['muted'],anchor='ra')
+            cv.line([(86,432),(995,432)],mix(col['background'],col['trace'],.22))
+            for v,root,color,label in signals:self.signal(cv,v,phase,root,color,label,width=265,part='static')
+            cv.text((575,550) if landscape else (555,475),'PROJECTION X',17,col['x'])
+            cv.text((85,550) if landscape else (85,795),'PROJECTION Y',17,col['y'])
+            self.draw_trace(cv,self.z,center,scale,mix(col['background'],col['trace'],.17),1,ghost=True)
+            caption=self.c['captions']['early' if k<=3 else 'middle' if k<=24 else 'late']
+            cv.text((86,1508),caption,28,col['ink']);cv.text((86,1556),'Deux signaux. Un seul tracé.',21,col['muted'])
+            for n,step in enumerate(self.c['steps']):
+                x=90+n*min(110,900/max(len(self.c['steps'])-1,1))
+                cv.circle((x,1613),3.5,col['trace'] if n<=i else col['muted'],fill=col['trace'] if n<=i else None)
+                cv.text((x,1637),str(step),16,col['ink'] if n==i else col['muted'],anchor='ma')
+            cv.line([(86,1690),(995,1690)],mix(col['background'],col['muted'],.2))
+            self._stage_cache[k]=base
+            if len(self._stage_cache)>2:self._stage_cache.popitem(last=False)
+        im=self._stage_cache[k].copy();cv=Canvas(im,self.c.get('fonts'),safe_settings(self.c.get('safe_area')))
+        for v,root,color,label in signals:self.signal(cv,v,phase,root,color,label,width=265,part='dynamic')
+        xr,yr=g['x'],g['y'];xs,ys=xr['scale'],yr['scale']
+        ex=self.chain(cv,self.cx,k,phase,(xr['center'][0]+self.cx[0].real*xs,xr['center'][1]),0,col['x'],display_scale=xs)
+        ey=self.chain(cv,self.cy,k,phase,(yr['center'][0],yr['center'][1]+self.cy[0].real*ys),np.pi/2,col['y'],display_scale=ys)
+        pen=(center[0]+scale*(ex.real-xr['center'][0])/xs,center[1]+scale*(ey.imag-yr['center'][1])/ys)
+        guide_y=960 if landscape else 790;guide_x=50 if landscape else 345
+        cv.line([(ex.real,ex.imag),(ex.real,guide_y),(pen[0],guide_y),pen],mix(col['background'],col['x'],.43),1)
+        cv.line([(ey.real,ey.imag),(guide_x,ey.imag),(guide_x,pen[1]),pen],mix(col['background'],col['y'],.43),1)
+        self.draw_trace(cv,a,center,scale,col['trace'],1.7,upto=phase);self.constellation(cv,a,t,phase,center=center,factor=scale)
+        j=min(int(phase*len(a)),len(a)-1)
+        if self.pen[j]:cv.circle(pen,8,col['trace'],1);cv.circle(pen,3.5,col['ink'],fill=col['ink'])
+        cv.line([(86,1690),(86+909*t/self.total,1690)],mix(col['background'],col['x'],.7),2)
+        return im
 
     def frame(self,t):
         image=self._frame_content(t)
@@ -368,6 +484,8 @@ class Film:
         return result
 
     def _frame_content(self,t):
+        if t<self.c['intro'] or t>=self.ends[-1]:return self.frame_hero(t)
+        if self.composition:return self.frame_adaptive(t)
         if self.c.get('layout') in ('minimal','balanced'):return self.frame_minimal(t)
         im=self.bg.copy();cv=Canvas(im,self.c.get('fonts'),safe_settings(self.c.get('safe_area')));col=self.colors
         large=self.c.get('layout')=='classic_large'
@@ -376,34 +494,6 @@ class Film:
         hero_scale=min(self.c['hero_scale'],640/max(np.ptp(self.z.real),1e-8),670/max(np.ptp(self.z.imag),1e-8)) if large else self.c['hero_scale']
         self.brand(cv)
         intro=t<self.c['intro'];outro=t>=self.ends[-1]
-        if intro or outro:
-            if intro:
-                title=f'Ce dessin cache\n{2*self.last} cercles.'
-                scale=hero_scale*.92;center=(490,1040)
-                opacity=float(smooth(t/.24))
-                subtitle='REGARDE LES FRÉQUENCES DESSINER.'
-            else:
-                title=self.c['final_title']
-                e=t-self.ends[-1]
-                # Enlarge and center the completed contour as a final reveal.
-                p=float(smooth(e/.8));scale=1+(hero_scale-1)*p
-                center=(center[0]+(500-center[0])*p,center[1]+(1050-center[1])*p);opacity=1
-                subtitle=self.c['title'].upper()
-            cv.text((84,257),title,49,col['ink'],kind='bold')
-            cv.text((86,425),subtitle,20,col['x'])
-            self.draw_trace(cv,self.approx[self.last],center,scale,
-                            mix(col['background'],col['trace'],opacity),1.7)
-            self.constellation(cv,self.approx[self.last],t,center=center,factor=scale,opacity=opacity)
-            cv.text((86,1505),f"1 → {self.last} cercles par axe",28,col['ink'])
-            cv.text((86,1555),self.c['tagline'],18,col['muted'])
-            cv.line([(86,1612),(865,1612)],mix(col['background'],col['trace'],.28))
-            cv.text((86,1635),self.c['brand']+'  /  '+self.c['episode'],17,col['muted'])
-            if outro and t-self.ends[-1]<.65:
-                if self.final_transition is None:
-                    self.final_transition=self.frame(float(self.ends[-1]-.00001))
-                im=Image.blend(self.final_transition,im,float(smooth((t-self.ends[-1])/.65)))
-            return im
-
         i,k,phase=self.state(t);a=self.approx[k]
         cv.text((83,244),self.c['title'],50,col['ink'],kind='serif')
         cv.text((86,315),self.c['tagline'],18,col['muted'])
@@ -590,12 +680,14 @@ def main():
     ap.add_argument('--contours',choices=['largest','all'])
     ap.add_argument('--layout',choices=['classic','classic_large','minimal','balanced'])
     ap.add_argument('--preset',choices=PRESETS,default='social')
+    ap.add_argument('--threads',type=int,default=4,help='Threads encodeur, de 1 à 16')
     ap.add_argument('--fps',type=int);ap.add_argument('--silent',action='store_true')
     ap.add_argument('--list-paths',action='store_true');ap.add_argument('--preview',action='store_true')
     ap.add_argument('--audio-only',action='store_true',help='Bande sonore seule, WAV et MP3, sans images ni vidéo')
     ap.add_argument('--export-social',action='store_true',help='also downscale a master to 1080×1920')
     ap.add_argument('--output',default=str(ROOT/'output'/'orbite'))
     args=ap.parse_args();c=read_config(args)
+    if not 1<=args.threads<=16:ap.error('Threads encodeur : de 1 à 16.')
     if args.audio_only and (args.preview or not c['audio']):ap.error('Audio seul : activer la musique et ne pas utiliser --preview.')
     if args.check:
         source=Path(args.image or args.svg or c['svg']).resolve()
@@ -629,7 +721,7 @@ def main():
     require_ffmpeg()
     width,height,fps=PRESETS[args.preset];fps=args.fps or fps
     if not 1<=fps<=120:raise ValueError('fps must be between 1 and 120')
-    film=Film(c,width,height)
+    film=Film(c,width,height,visual=not args.audio_only)
     print(f'{width}×{height} · {fps} fps · {film.total:g} s',flush=True)
     report={'resolution':[width,height],'fps':fps,'duration_s':film.total,'svg':film.info,
             'rms_logical_pixels':film.errors,'config':c}
@@ -656,7 +748,7 @@ def main():
         return
     tempfile=Path(str(prefix)+'_silent.mp4')
     cmd=[require_ffmpeg(),'-v','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{width}x{height}',
-         '-r',str(fps),'-i','-','-an','-c:v','libx264','-preset','fast','-crf','18',
+         '-r',str(fps),'-i','-','-an','-c:v','libx264','-threads',str(args.threads),'-preset','fast','-crf','18',
          '-pix_fmt','yuv420p','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
          '-vf','scale=in_range=full:out_range=tv:out_color_matrix=bt709,'
                'setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709',
@@ -681,7 +773,7 @@ def main():
         social=Path(str(prefix)+'_1080x1920.mp4')
         command([require_ffmpeg(),'-v','error','-y','-i',str(final),'-vf','scale=1080:1920:flags=lanczos,'
                  'setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709',
-                 '-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p',
+                 '-c:v','libx264','-threads',str(args.threads),'-preset','fast','-crf','18','-pix_fmt','yuv420p',
                  '-c:a','copy','-movflags','+faststart',str(social)])
     reportfile.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(f'Done: {final}',flush=True)

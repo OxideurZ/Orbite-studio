@@ -40,6 +40,8 @@ class GuiWalkthrough(unittest.TestCase):
                     self.assertEqual(app.collect().config['safe_area']['top'],260)
                     app.reset_safe_area();self.assertEqual(app.collect().config['safe_area']['top'],240)
                     app.vars['safe_top'].set('260')
+                    app.vars['jobs'].set('2');app.vars['force'].set(True)
+                    self.assertEqual(app.collect().jobs,2);self.assertTrue(app.collect().force)
                     app.vars['output'].set(str(Path(folder)/'output'))
                     app.stages.selection_set(app.stages.get_children()[1]);app.select_stage()
                     app.vars['stage_n'].set('5');app.vars['stage_d'].set('1,2');app.apply_stage()

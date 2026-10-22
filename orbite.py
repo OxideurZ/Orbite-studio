@@ -18,6 +18,9 @@ import subprocess
 import sys
 import time
 import unicodedata
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor,as_completed
+from render_cache import products,receipt_path,completed,record
 
 from trace_image import trace
 from themes import (load_theme,list_themes,export_theme,merge_configs,resolve_visual_paths,
@@ -60,6 +63,79 @@ def build_style(config=None,theme=None,brand=None,background=None,opacity=None):
     return style
 
 
+def choose_jobs(requested,count):
+    return max(1,min(count,requested or (2 if (os.cpu_count() or 1)>=4 else 1)))
+
+
+def _process_source(payload):
+    i,total,source,args,style,out,tool_hash,engine_hash,threads=payload
+    started=time.monotonic()
+    digest=hashlib.sha256(source.read_bytes()).hexdigest()
+    source_id=hashlib.sha256(str(source.resolve()).encode()).hexdigest()[:6]
+    source_root=out/(slug(source.stem)+'-'+digest[:8]+'-'+source_id)
+    title=args.title or (style.get('title') if args.config else None) or source.stem.replace('_',' ').replace('-',' ')
+    print(f'\n[{i}/{total}] {source.name}',flush=True)
+    result={'input':str(source),'title':title,'theme':style.get('theme_name')}
+    try:
+        episode=style.get('episode')
+        if episode is None:episode=f'{i:03d}'
+        elif str(episode).isdigit():episode=f'{int(episode)+i-1:0{max(3,len(str(episode)))}d}'
+        c={**style,'title':title,'episode':str(episode),
+           'path_id':args.path_id if args.path_id is not None else style.get('path_id'),
+           'contours':style.get('contours','all')}
+        if args.no_audio:c['audio']=False
+        key=hashlib.sha256((digest+args.mode+args.detail+tool_hash).encode()).hexdigest()
+        variant=config_fingerprint(c,salt=engine_hash+key)
+        job=source_root/'variants'/(slug(style.get('theme_name','personnalise'))+'-'+variant[:10])
+        job.mkdir(parents=True,exist_ok=True)
+        prefix=job/'orbite';result['folder']=str(job)
+        preset='preview' if args.preview or args.stills or args.audio_only else args.quality
+        action='stills' if args.stills else 'audio' if args.audio_only else 'video'
+        outputs=products(prefix,action,preset,args.quality=='master' and not(args.preview or args.stills or args.audio_only))
+        receipt=receipt_path(job,{'action':action,'preset':preset,'fps':args.fps})
+        if not args.force and completed(receipt,outputs):
+            result.update(status='ok',cached=True,seconds=round(time.monotonic()-started,2),preset=preset)
+            print('  Sorties inchangées déjà prêtes → '+str(job),flush=True)
+            return result
+        if source.suffix.lower()=='.svg':
+            vector=source_root/'source.svg'
+            if not vector.exists():shutil.copyfile(source,vector)
+            result['mode']='svg'
+        else:
+            cache=source_root/'traces'/key[:12];cache.mkdir(parents=True,exist_ok=True)
+            vector=cache/'strokes.svg';stamp=cache/'trace_cache.json'
+            if vector.is_file() and stamp.is_file() and json.loads(stamp.read_text()).get('key')==key:
+                print('  Tracé en cache.',flush=True)
+                result['trace_cached']=True
+                result['mode']=json.loads(vector.with_suffix('.trace.json').read_text()).get('mode')
+            else:
+                info=trace(source,vector,mode=args.mode,detail=args.detail)
+                stamp.write_text(json.dumps({'key':key}),encoding='utf-8')
+                result['mode']=info['mode'];result['trace_cached']=False
+                print(f"  {info['strokes']} traits · {info['mode']}",flush=True)
+        c['svg']=os.path.relpath(vector,job)
+        c=relative_visual_paths(c,job)
+        config=job/'episode.json'
+        config.write_text(json.dumps(c,ensure_ascii=False,indent=2),encoding='utf-8')
+        preset='preview' if args.preview or args.stills or args.audio_only else args.quality
+        cmd=[sys.executable,str(ROOT/'render_social.py'),'--config',str(config),
+             '--preset',preset,'--output',str(prefix)]
+        cmd+=['--threads',str(threads)]
+        if args.stills:cmd.append('--preview')
+        if args.audio_only:cmd.append('--audio-only')
+        if args.fps is not None:cmd+=['--fps',str(args.fps)]
+        if args.no_audio:cmd.append('--silent')
+        if args.quality=='master' and not (args.preview or args.stills or args.audio_only):cmd.append('--export-social')
+        subprocess.run(cmd,check=True)
+        record(receipt,outputs)
+        result.update(status='ok',seconds=round(time.monotonic()-started,2),preset=preset)
+        print(f"  Terminé → {job}",flush=True)
+    except Exception as exc:
+        result.update(status='failed',error=str(exc),seconds=round(time.monotonic()-started,2))
+        print(f'  Échec : {exc}',file=sys.stderr,flush=True)
+    return result
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('input',nargs='?',help='Image, SVG ou dossier')
@@ -82,9 +158,12 @@ def main():
     ap.add_argument('--path-id',help='Élément précis d’un SVG')
     ap.add_argument('--no-audio',action='store_true')
     ap.add_argument('--recursive',action='store_true',help='Parcourir aussi les sous-dossiers')
+    ap.add_argument('--jobs',type=int,default=0,help='Images en parallèle : 0 auto (max 2), 1 à 4')
+    ap.add_argument('--force',action='store_true',help='Recalculer même si les sorties complètes existent')
     ap.add_argument('--output',default=str(ROOT/'output'/'series'))
     args=ap.parse_args()
     if args.audio_only and (args.stills or args.preview or args.no_audio):ap.error("Audio seul : incompatible avec --stills, --preview et --no-audio.")
+    if not 0<=args.jobs<=4:ap.error('Choisir entre 0 et 4 traitements en parallèle.')
     if args.fps is not None and not 1<=args.fps<=120:ap.error('La cadence doit être comprise entre 1 et 120 images/s.')
     if args.list_themes:
         print(json.dumps(list_themes(),ensure_ascii=False,indent=2));return 0
@@ -115,64 +194,25 @@ def main():
         return 0 if ok else 1
     out=Path(args.output).resolve();out.mkdir(parents=True,exist_ok=True)
     tool_hash=hashlib.sha256((ROOT/'trace_image.py').read_bytes()).hexdigest()
-    engine_hash=hashlib.sha256((ROOT/'render_social.py').read_bytes()+(ROOT/'safe_area.py').read_bytes()+(ROOT/'music.py').read_bytes()).hexdigest()
-    results=[]
-    for i,source in enumerate(sources,1):
-        started=time.monotonic()
-        digest=hashlib.sha256(source.read_bytes()).hexdigest()
-        source_root=out/(slug(source.stem)+'-'+digest[:8])
-        title=args.title or (style.get('title') if args.config else None) or source.stem.replace('_',' ').replace('-',' ')
-        print(f'\n[{i}/{len(sources)}] {source.name}',flush=True)
-        result={'input':str(source),'title':title,'theme':style.get('theme_name')}
-        try:
-            episode=style.get('episode')
-            if episode is None:episode=f'{i:03d}'
-            elif str(episode).isdigit():episode=f'{int(episode)+i-1:0{max(3,len(str(episode)))}d}'
-            c={**style,'title':title,'episode':str(episode),
-               'path_id':args.path_id if args.path_id is not None else style.get('path_id'),
-               'contours':style.get('contours','all')}
-            if args.no_audio:c['audio']=False
-            key=hashlib.sha256((digest+args.mode+args.detail+tool_hash).encode()).hexdigest()
-            variant=config_fingerprint(c,salt=engine_hash+key)
-            job=source_root/'variants'/(slug(style.get('theme_name','personnalise'))+'-'+variant[:10])
-            job.mkdir(parents=True,exist_ok=True)
-            prefix=job/'orbite';result['folder']=str(job)
-            if source.suffix.lower()=='.svg':
-                vector=source_root/'source.svg'
-                if not vector.exists():shutil.copyfile(source,vector)
-                result['mode']='svg'
-            else:
-                cache=source_root/'traces'/key[:12];cache.mkdir(parents=True,exist_ok=True)
-                vector=cache/'strokes.svg';stamp=cache/'trace_cache.json'
-                if vector.is_file() and stamp.is_file() and json.loads(stamp.read_text()).get('key')==key:
-                    print('  Tracé en cache.',flush=True)
-                    result['trace_cached']=True
-                    result['mode']=json.loads(vector.with_suffix('.trace.json').read_text()).get('mode')
-                else:
-                    info=trace(source,vector,mode=args.mode,detail=args.detail)
-                    stamp.write_text(json.dumps({'key':key}),encoding='utf-8')
-                    result['mode']=info['mode'];result['trace_cached']=False
-                    print(f"  {info['strokes']} traits · {info['mode']}",flush=True)
-            c['svg']=os.path.relpath(vector,job)
-            c=relative_visual_paths(c,job)
-            config=job/'episode.json'
-            config.write_text(json.dumps(c,ensure_ascii=False,indent=2),encoding='utf-8')
-            preset='preview' if args.preview or args.stills or args.audio_only else args.quality
-            cmd=[sys.executable,str(ROOT/'render_social.py'),'--config',str(config),
-                 '--preset',preset,'--output',str(prefix)]
-            if args.stills:cmd.append('--preview')
-            if args.audio_only:cmd.append('--audio-only')
-            if args.fps is not None:cmd+=['--fps',str(args.fps)]
-            if args.no_audio:cmd.append('--silent')
-            if args.quality=='master' and not (args.preview or args.stills or args.audio_only):cmd.append('--export-social')
-            subprocess.run(cmd,check=True)
-            result.update(status='ok',seconds=round(time.monotonic()-started,2),preset=preset)
-            print(f"  Terminé → {job}",flush=True)
-        except Exception as exc:
-            result.update(status='failed',error=str(exc),seconds=round(time.monotonic()-started,2))
-            print(f'  Échec : {exc}',file=sys.stderr,flush=True)
-        results.append(result)
-        (out/'batch_report.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+    engine_hash=hashlib.sha256(b''.join((ROOT/name).read_bytes() for name in ['render_social.py','composition.py','safe_area.py','music.py','runtime.py','render_cache.py'])).hexdigest()
+    workers=choose_jobs(args.jobs,len(sources));threads=max(1,min(4,(os.cpu_count() or 2)//workers))
+    payloads=[(i,len(sources),source,args,style,out,tool_hash,engine_hash,threads) for i,source in enumerate(sources,1)]
+    results=[None]*len(sources)
+    def collect(index,result):
+        results[index]=result
+        (out/'batch_report.json').write_text(json.dumps([r for r in results if r is not None],ensure_ascii=False,indent=2),encoding='utf-8')
+        print(f'Lot : {sum(r is not None for r in results)}/{len(sources)}',flush=True)
+    if workers==1:
+        for index,payload in enumerate(payloads):collect(index,_process_source(payload))
+    else:
+        print(f'Traitement parallèle : {workers} images · {threads} threads encodeur/image',flush=True)
+        with ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn')) as pool:
+            futures={pool.submit(_process_source,payload):index for index,payload in enumerate(payloads)}
+            for future in as_completed(futures):
+                index=futures[future]
+                try:result=future.result()
+                except Exception as exc:result={'input':str(sources[index]),'status':'failed','error':str(exc)}
+                collect(index,result)
     failures=sum(r['status']!='ok' for r in results)
     print(f'\n{len(results)-failures}/{len(results)} terminé(s). Rapport : {out/"batch_report.json"}',flush=True)
     return 1 if failures else 0

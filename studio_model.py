@@ -46,6 +46,8 @@ class StudioState:
     mode:str='auto'
     detail:str='medium'
     recursive:bool=False
+    jobs:int=0
+    force:bool=False
     config:dict=field(default_factory=dict)
     theme_meta:dict=field(default_factory=lambda:{'version':1,'name':'Cosmos','description':''})
 
@@ -65,6 +67,8 @@ class StudioState:
         self.theme_meta={'version':1,'name':raw.get('name',Path(name).stem),'description':raw.get('description','')}
 
     def validate(self,require_source=False):
+        if type(self.jobs) is not int or not 0<=self.jobs<=4:raise ValueError('Choisir entre 0 et 4 traitements en parallèle.')
+        if type(self.force) is not bool:raise ValueError('force doit être vrai ou faux.')
         validate_visual(self.config)
         for key in ['intro','outro']:
             value=self.config.get(key)
@@ -104,6 +108,7 @@ class StudioState:
     def save_project(self,file):
         self.validate();file=Path(file).resolve()
         c=relative_visual_paths(self.config,file.parent)
+        c['_pipeline']={'jobs':self.jobs,'force':self.force}
         data={'format':'orbite-studio','version':1,'source':os.path.relpath(self.source,file.parent) if self.source else '',
               'output':os.path.relpath(self.output,file.parent),'quality':self.quality,'fps':self.fps,
               'mode':self.mode,'detail':self.detail,'recursive':self.recursive,
@@ -114,14 +119,16 @@ class StudioState:
     def load_project(cls,file):
         file=Path(file).resolve();data=json.loads(file.read_text(encoding='utf-8'))
         if data.get('format')!='orbite-studio' or data.get('version')!=1:raise ValueError('Ce fichier n’est pas un projet ORBITE Studio compatible.')
-        allowed={'format','version','source','output','quality','fps','mode','detail','recursive','config','theme'}
+        allowed={'format','version','source','output','quality','fps','mode','detail','recursive','jobs','force','config','theme'}
         if set(data)-allowed:raise ValueError('Champs de projet inconnus : '+', '.join(sorted(set(data)-allowed)))
         base=cls.initial()
         c=resolve_visual_paths(data['config'],file.parent)
+        options=c.pop('_pipeline',{})
+        base.jobs=options.get('jobs',0);base.force=options.get('force',False)
         base.config=merge_configs(base.config,c)
         for name in ['source','output']:
             value=data.get(name,'');setattr(base,name,str((file.parent/value).resolve()) if value else '')
-        for name in ['quality','fps','mode','detail','recursive']:
+        for name in ['quality','fps','mode','detail','recursive','jobs','force']:
             if name in data:setattr(base,name,data[name])
         base.theme_meta=data.get('theme',base.theme_meta)
         # Missing assets can be repaired in the editor; validation happens before execution.
@@ -149,6 +156,8 @@ class StudioState:
         argv=[sys.executable,'-u',str(ROOT/'orbite.py'),str(Path(self.source).resolve()),
               '--config',str(config),'--output',str(Path(self.output).resolve()),
               '--quality',self.quality,'--mode',self.mode,'--detail',self.detail]
+        argv+=['--jobs',str(self.jobs)]
+        if self.force:argv.append('--force')
         if self.fps is not None:argv+=['--fps',str(self.fps)]
         if self.recursive:argv.append('--recursive')
         if self.config.get('path_id'):argv+=['--path-id',self.config['path_id']]
@@ -203,7 +212,7 @@ def palette_from_image(file):
 
 class PreviewBuilder:
     def __init__(self):
-        self.temp=tempfile.TemporaryDirectory(prefix='orbite-studio-preview-')
+        self.temp=tempfile.TemporaryDirectory(prefix='orbite-studio-preview-');self.film=None;self.math_key=None
     def build(self,state,view='Construction'):
         state.validate();demo=not state.source.strip()
         source=ROOT/'examples/etoile.svg' if demo else inputs(state.source,state.recursive)[0]
@@ -216,7 +225,11 @@ class PreviewBuilder:
         c=merge_configs(DEFAULT,state.animation_config())
         c['svg']=str(vector);c['title']=state.config.get('title') or ('Une étoile' if demo else source.stem.replace('_',' ').replace('-',' '))
         if demo:c['path_id']=None
-        film=Film(c,360,640)
+        key=(hashlib.sha256(Path(c['svg']).read_bytes()).hexdigest(),c['samples'],c['path_id'],c['contours'],c['layout'],tuple(c['steps']))
+        if key!=self.math_key:
+            self.film=Film(c,360,640);self.math_key=key
+        else:self.film.restyle(c)
+        film=self.film
         if view=='Image finale':t=film.total-.3
         elif view=='Ouverture':t=min(.7,c['intro']*.7)
         else:t=float(film.ends[-1]-.4)
@@ -243,13 +256,17 @@ class TaskRunner:
                 self.process=subprocess.Popen(argv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                     text=True,encoding='utf-8',errors='replace',bufsize=1,**kwargs)
             if self.cancelled.is_set():self._terminate()
-            current=total=1
+            current=total=1;parallel=False
             for line in self.process.stdout:
                 self.events.put(('log',line.rstrip()))
+                if 'Traitement parallèle :' in line:parallel=True
+                lot=re.search(r'Lot : (\d+)/(\d+)',line)
+                if lot:
+                    done,count=map(int,lot.groups());self.events.put(('progress',100*done/max(1,count)))
                 batch=re.match(r'\[(\d+)/(\d+)\]',line)
                 if batch:current,total=map(int,batch.groups())
                 progress=re.search(r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*s',line)
-                if progress:
+                if progress and not parallel:
                     now,duration=map(float,progress.groups())
                     self.events.put(('progress',100*((current-1)+min(now/max(duration,.01),1))/total))
             self.process.stdout.close()

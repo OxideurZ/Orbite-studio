@@ -30,7 +30,7 @@ from studio_model import StudioState,PreviewBuilder,TaskRunner,palette_from_imag
 from themes import ROOT,load_theme,list_themes,resolve_visual_paths,merge_configs
 
 BG='#101624';PANEL='#172134';INK='#e9edf7';MUTED='#9aaac1';ACCENT='#84dfe6'
-LAYOUTS={'Original · dessin agrandi':'classic_large','Original':'classic','Épuré':'balanced','Minimal':'minimal'}
+LAYOUTS={'Adaptatif · dessin maximal':'classic_large','Original':'classic','Épuré':'balanced','Minimal':'minimal'}
 MODES={'Automatique':'auto','Dessin au trait':'lineart','Contours photo':'edges'}
 DETAILS={'Peu de détails':'low','Détails moyens':'medium','Détails fins':'high'}
 QUALITIES={'Réseaux · 1080 × 1920':'social','Master · 1440 × 2560 + 1080':'master'}
@@ -295,9 +295,12 @@ class StudioApp:
         self._combo(p,6,'Images / seconde','fps',['Automatique','24','25','30','50','60','120'],False)
         ttk.Label(p,text='Musique : réglages et écoute dans l’onglet Musique.',style='Muted.TLabel').grid(row=7,column=0,columnspan=3,sticky='w',pady=8)
         self._entry(p,8,'Dossier de sortie','output',browse=self.choose_output)
-        self._section(p,'Quel bouton utiliser ?',10)
+        self._section(p,'Calcul et cache',10)
+        self._combo(p,11,'Images en parallèle','jobs',['Auto (max. 2)','1','2','3','4'])
+        ttk.Checkbutton(p,text='Forcer le recalcul des exports déjà prêts',variable=self._var('force',False,tk.BooleanVar)).grid(row=12,column=0,columnspan=3,sticky='w',pady=6)
+        self._section(p,'Quel bouton utiliser ?',13)
         explanations='Vérifier : contrôle des fichiers et paramètres, sans rendu.\n\nImages fixes : trois images pour contrôler cadrage et couleurs.\n\nVidéo test : petite vidéo 540 × 960 avec le vrai rythme et le son.\n\nExporter : vidéo en pleine résolution, avec la musique si elle est activée.'
-        ttk.Label(p,text=explanations,wraplength=550,style='Muted.TLabel').grid(row=11,column=0,columnspan=3,sticky='w')
+        ttk.Label(p,text=explanations,wraplength=550,style='Muted.TLabel').grid(row=14,column=0,columnspan=3,sticky='w')
 
     def _advanced(self):
         p=self.advanced_panel.body
@@ -316,6 +319,7 @@ class StudioApp:
         direct={key:c.get(key,'') for key in ['title','brand','tagline','episode','intro','outro','hero_scale','samples','background']}
         direct.update(source=state.source,output=state.output,theme_name=state.theme_meta['name'],
                       opacity=c['background_opacity'],dim_top=c['background_dimming']['top'],dim_bottom=c['background_dimming']['bottom'],
+                      jobs='Auto (max. 2)' if state.jobs==0 else str(state.jobs),force=state.force,
                       fps='Automatique' if state.fps is None else str(state.fps),audio=c['audio'],recursive=state.recursive,
                       path_id=c.get('path_id') or '')
         for key,mapping,value in [('layout',LAYOUTS,c['layout']),('mode',MODES,state.mode),('detail',DETAILS,state.detail),
@@ -362,6 +366,7 @@ class StudioApp:
         s.output=str(Path(v['output']).expanduser().resolve()) if v['output'].strip() else ''
         if c['background']:c['background']=str(Path(c['background']).expanduser().resolve())
         s.mode=MODES[v['mode']];s.detail=DETAILS[v['detail']];s.quality=QUALITIES[v['quality']]
+        s.jobs=0 if v['jobs']=='Auto (max. 2)' else int(v['jobs']);s.force=bool(v['force'])
         s.fps=None if v['fps']=='Automatique' else int(v['fps']);s.recursive=bool(v['recursive'])
         s.theme_meta={'version':1,'name':v['theme_name'],'description':self.description_text.get('1.0','end-1c')}
         c['theme_name']=s.theme_meta['name']
