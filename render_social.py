@@ -194,7 +194,9 @@ def _load_contour(c):
     large=c.get('layout')=='classic_large'
     balanced=c.get('layout')=='balanced'
     minimal=c.get('layout') in ('minimal','balanced','classic_large')
-    max_width,max_height=(380,530) if balanced or large else (470,620) if minimal else (350,520)
+    # Give the subject more of the frame while keeping the same shared unit for
+    # its epicycles. The conservative per-axis bounds below still cap every ring.
+    max_width,max_height=(420,585) if large else (380,530) if balanced else (470,620) if minimal else (350,520)
     size = min(max_width/max(np.ptp(z.real),1e-8),max_height/max(np.ptp(z.imag),1e-8))
     auxiliary=[]
     for coeff,rotation,limits in [
@@ -213,7 +215,7 @@ def _load_contour(c):
                 (starts.imag-r[:,None]).min(),(starts.imag+r[:,None]).max()]
         if minimal:
             lo,hi=(bounds[2],bounds[3]) if rotation==0 else (bounds[0],bounds[1])
-            space=(400 if rotation==0 else 455) if large else (480 if rotation==0 else 460) if balanced else (520 if rotation==0 else 850)
+            space=(440 if rotation==0 else 500) if large else (480 if rotation==0 else 460) if balanced else (520 if rotation==0 else 850)
             size=min(size,space/max(hi-lo,1e-8))
             auxiliary.append((lo,hi))
         for j,(bound,limit) in enumerate(zip(bounds,limits)):
@@ -331,7 +333,7 @@ class Film:
                 values=np.r_[values,values[0]]
             run=np.column_stack((center[0]+values.real*factor,center[1]+values.imag*factor))
             if not ghost:
-                cv.line(run,mix(self.colors['background'],color or self.colors['trace'],.20),width+5)
+                cv.line(run,mix(self.colors['background'],color or self.colors['trace'],.20),width+5.5)
             cv.line(run,color or self.colors['trace'],width)
 
     def brand(self,cv):
@@ -374,8 +376,8 @@ class Film:
         p=complex(*root)+np.r_[0,np.cumsum(r*np.exp(1j*(2*np.pi*n*phase+angle)))]*display_scale
         for j in visible:
             a,b=p[j],p[j+1];radius=r[j]*display_scale
-            if radius>=.65:cv.circle((a.real,a.imag),radius,outline,1)
-            cv.line([(a.real,a.imag),(b.real,b.imag)],ray,1.4 if radius>3 else 1)
+            if radius>=.65:cv.circle((a.real,a.imag),radius,outline,1.15)
+            cv.line([(a.real,a.imag),(b.real,b.imag)],ray,1.6 if radius>3 else 1.15)
         cv.circle((p[-1].real,p[-1].imag),4,color,fill=color)
         return p[-1]
 
@@ -422,7 +424,7 @@ class Film:
             scale=drawing['scale']+(hero['scale']-drawing['scale'])*amount
             center=np.array(drawing['center'])+(np.array(hero['center'])-drawing['center'])*amount
         self.brand(cv);cv.text((84,257),title,49,col['ink'],kind='bold');cv.text((86,425),subtitle,20,col['x'])
-        self.draw_trace(cv,a,center,scale,mix(col['background'],col['trace'],opacity),1.7)
+        self.draw_trace(cv,a,center,scale,mix(col['background'],col['trace'],opacity),2.0)
         self.constellation(cv,a,t,center=center,factor=scale,opacity=opacity)
         cv.text((86,1505),f"1 → {self.last} cercles par axe",28,col['ink']);cv.text((86,1555),self.c['tagline'],18,col['muted'])
         cv.line([(86,1612),(995,1612)],mix(col['background'],col['trace'],.28))
@@ -447,7 +449,7 @@ class Film:
             for v,root,color,label in signals:self.signal(cv,v,phase,root,color,label,width=265,part='static')
             cv.text((575,550) if landscape else (555,475),'PROJECTION X',17,col['x'])
             cv.text((85,550) if landscape else (85,795),'PROJECTION Y',17,col['y'])
-            self.draw_trace(cv,self.z,center,scale,mix(col['background'],col['trace'],.17),1,ghost=True)
+            self.draw_trace(cv,self.z,center,scale,mix(col['background'],col['trace'],.32),1.2,ghost=True)
             caption=self.c['captions']['early' if k<=3 else 'middle' if k<=24 else 'late']
             cv.text((86,1508),caption,28,col['ink']);cv.text((86,1556),'Deux signaux. Un seul tracé.',21,col['muted'])
             for n,step in enumerate(self.c['steps']):
@@ -465,7 +467,7 @@ class Film:
         pen=(center[0]+scale*(ex.real-xr['center'][0])/xs,center[1]+scale*(ey.imag-yr['center'][1])/ys)
         cv.line([(ex.real,ex.imag),pen],mix(col['background'],col['x'],.52),1)
         cv.line([(ey.real,ey.imag),pen],mix(col['background'],col['y'],.52),1)
-        self.draw_trace(cv,a,center,scale,col['trace'],1.7,upto=phase);self.constellation(cv,a,t,phase,center=center,factor=scale)
+        self.draw_trace(cv,a,center,scale,col['trace'],2.0,upto=phase);self.constellation(cv,a,t,phase,center=center,factor=scale)
         j=min(int(phase*len(a)),len(a)-1)
         if self.pen[j]:cv.circle(pen,8,col['trace'],1);cv.circle(pen,3.5,col['ink'],fill=col['ink'])
         cv.line([(86,1690),(86+909*t/self.total,1690)],mix(col['background'],col['x'],.7),2)
@@ -504,13 +506,13 @@ class Film:
         self.signal(cv,a.imag,phase,(86,764),col['y'],'y(t) · sin')
         cv.text((552,481),'PROJECTION X',17,col['x'])
         cv.text((87,877),'PROJECTION Y',17,col['y'])
-        self.draw_trace(cv,self.z,center=center,color=mix(col['background'],col['trace'],.21),width=1,ghost=True)
+        self.draw_trace(cv,self.z,center=center,color=mix(col['background'],col['trace'],.32),width=1.2,ghost=True)
         ex=self.chain(cv,self.cx,k,phase,(center[0]+self.cx[0].real,geom.get('x_root_y',630)),0,col['x'])
         ey=self.chain(cv,self.cy,k,phase,(geom.get('y_root_x',300),center[1]+self.cy[0].real),np.pi/2,col['y'])
         pen=(ex.real,ey.imag)
         cv.line([(ex.real,ex.imag),pen],mix(col['background'],col['x'],.52),1)
         cv.line([(ey.real,ey.imag),pen],mix(col['background'],col['y'],.52),1)
-        self.draw_trace(cv,a,center=center,color=col['trace'],width=1.7,upto=phase)
+        self.draw_trace(cv,a,center=center,color=col['trace'],width=2.0,upto=phase)
         self.constellation(cv,a,t,phase,center=center)
         j=min(int(phase*len(a)),len(a)-1)
         if self.pen[j]:
@@ -549,7 +551,7 @@ class Film:
                 location=(center[0]+(hero[0]-center[0])*p,center[1]+(hero[1]-center[1])*p)
                 opacity=1
             self.draw_trace(cv,self.approx[self.last],location,scale,
-                            mix(col['background'],col['trace'],opacity),1.7)
+                            mix(col['background'],col['trace'],opacity),2.0)
             self.constellation(cv,self.approx[self.last],t,center=location,factor=scale,opacity=opacity)
             # The subject's name is the only title. Opening/closing durations are preserved.
             cv.text((480,310) if balanced else (500,1515),self.c['title'],34 if balanced else 25,
@@ -571,7 +573,7 @@ class Film:
         pen=(ex.real,ey.imag)
         cv.line([(ex.real,ex.imag),pen],mix(col['background'],col['x'],.38),1)
         cv.line([(ey.real,ey.imag),pen],mix(col['background'],col['y'],.38),1)
-        self.draw_trace(cv,a,center=center,color=col['trace'],width=1.7,upto=phase)
+        self.draw_trace(cv,a,center=center,color=col['trace'],width=2.0,upto=phase)
         self.constellation(cv,a,t,phase,center=center)
         j=min(int(phase*len(a)),len(a)-1)
         if self.pen[j]:

@@ -1,5 +1,13 @@
 # Changements
 
+## 2.2.0 — 23 octobre 2026
+
+- Dessin en construction agrandi d’environ 10 % quand l’enveloppe des cercles le
+  permet, sans changer leur échelle commune ni leurs projections droites.
+- Silhouette fantôme plus lisible sur le fond, avec une ligne légèrement renforcée.
+- Tracé final et contours des cercles épaissis d’environ 15 à 18 % pour mieux
+  ressortir sur les formats vidéo verticaux.
+
 ## 2.1.0 — 22 octobre 2026
 
 - Nouvelle méthode Silhouette : suit les bords des aplats et leurs trous, au lieu
