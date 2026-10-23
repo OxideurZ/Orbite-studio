@@ -1,5 +1,12 @@
 # Changements
 
+## 2.2.1 — 23 octobre 2026
+
+- Tracé animé et halo plus présents, cercles et rayons plus nets.
+- Silhouette fantôme plus contrastée pour mieux lire la reconstruction par-dessus.
+- Cadrage et enveloppes des anneaux légèrement agrandis, toujours avec une échelle
+  commune et des projections droites.
+
 ## 2.2.0 — 23 octobre 2026
 
 - Dessin en construction agrandi d’environ 10 % quand l’enveloppe des cercles le
