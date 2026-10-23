@@ -6,13 +6,14 @@ import os
 import tempfile
 
 
-def products(prefix,action,preset,export_social=False):
+def products(prefix,action,preset,export_social=False,video_prefix=None):
     prefix=str(prefix)
     if action=='stills':return [Path(prefix+'_'+name+'.png') for name in ['cover','drawing','hook']]
     if action=='audio':return [Path(prefix+'_soundtrack.'+ext) for ext in ['wav','mp3']]
     width,height={'preview':(540,960),'social':(1080,1920),'master':(1440,2560)}[preset]
-    files=[Path(prefix+f'_{width}x{height}.mp4')]
-    if export_social and preset=='master':files.append(Path(prefix+'_1080x1920.mp4'))
+    video_prefix=str(video_prefix or prefix)
+    files=[Path(video_prefix+f'_{width}x{height}.mp4')]
+    if export_social and preset=='master':files.append(Path(video_prefix+'_1080x1920.mp4'))
     return files
 
 

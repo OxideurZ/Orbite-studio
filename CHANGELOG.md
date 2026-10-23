@@ -1,5 +1,16 @@
 # Changements
 
+## 2.2.2 — 23 octobre 2026
+
+- Sur macOS, utilise l’encodeur H.264 VideoToolbox quand FFmpeg le propose, avec
+  un repli automatique vers libx264 sinon. Le rendu des dessins reste compatible
+  avec les autres machines.
+- Le traitement parallèle automatique s’adapte aux cœurs du Mac ; le nombre
+  d’images en parallèle reste réglable dans l’interface.
+- Les MP4 vont dans `videos/`; tracés, images fixes, pistes audio, rapports et
+  configurations vont dans `fichiers/`. Les anciens résultats mixtes sont rangés
+  dans ces dossiers au prochain traitement.
+
 ## 2.2.1 — 23 octobre 2026
 
 - Tracé animé et halo plus présents, cercles et rayons plus nets.

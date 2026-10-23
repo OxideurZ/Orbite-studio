@@ -64,7 +64,28 @@ def build_style(config=None,theme=None,brand=None,background=None,opacity=None):
 
 
 def choose_jobs(requested,count):
-    return max(1,min(count,requested or (2 if (os.cpu_count() or 1)>=4 else 1)))
+    if requested:return max(1,min(count,requested))
+    cores=os.cpu_count() or 1
+    # Apple M3 Pro/Max machines have room to prepare more images concurrently;
+    # keep the base M3 and other computers conservative about memory use.
+    automatic=4 if sys.platform=='darwin' and cores>=14 else 3 if sys.platform=='darwin' and cores>=10 else 2 if cores>=4 else 1
+    return max(1,min(count,automatic))
+
+
+def organize_legacy_output(out,source_key,asset_root):
+    """Move older mixed outputs into the new Fichiers/Videos folders once."""
+    legacy=out/source_key
+    if not legacy.is_dir():return
+    for item in sorted(legacy.rglob('*'),key=lambda p:len(p.parts)):
+        if not item.is_file():continue
+        relative=item.relative_to(legacy)
+        if item.suffix.lower()=='.mp4':
+            target=out/'videos'/source_key/relative
+        else:target=asset_root/relative
+        target.parent.mkdir(parents=True,exist_ok=True)
+        if target.exists():item.unlink()
+        else:shutil.move(str(item),str(target))
+    shutil.rmtree(legacy,ignore_errors=True)
 
 
 def _process_source(payload):
@@ -72,7 +93,10 @@ def _process_source(payload):
     started=time.monotonic()
     digest=hashlib.sha256(source.read_bytes()).hexdigest()
     source_id=hashlib.sha256(str(source.resolve()).encode()).hexdigest()[:6]
-    source_root=out/(slug(source.stem)+'-'+digest[:8]+'-'+source_id)
+    source_key=slug(source.stem)+'-'+digest[:8]+'-'+source_id
+    source_root=out/'fichiers'/source_key
+    organize_legacy_output(out,source_key,source_root)
+    source_root.mkdir(parents=True,exist_ok=True)
     title=args.title or (style.get('title') if args.config else None) or source.stem.replace('_',' ').replace('-',' ')
     print(f'\n[{i}/{total}] {source.name}',flush=True)
     result={'input':str(source),'title':title,'theme':style.get('theme_name')}
@@ -90,9 +114,12 @@ def _process_source(payload):
         job=source_root/'variants'/(slug(style.get('theme_name','personnalise'))+'-'+variant[:10])
         job.mkdir(parents=True,exist_ok=True)
         prefix=job/'orbite';result['folder']=str(job)
+        video_prefix=out/'videos'/source_key/'variants'/(slug(style.get('theme_name','personnalise'))+'-'+variant[:10])/'orbite'
+        result['video_folder']=str(video_prefix.parent)
         preset='preview' if args.preview or args.stills or args.audio_only else args.quality
         action='stills' if args.stills else 'audio' if args.audio_only else 'video'
-        outputs=products(prefix,action,preset,args.quality=='master' and not(args.preview or args.stills or args.audio_only))
+        export_social=args.quality=='master' and not(args.preview or args.stills or args.audio_only)
+        outputs=products(prefix,action,preset,export_social,video_prefix if action=='video' else None)
         receipt=receipt_path(job,{'action':action,'preset':preset,'fps':args.fps})
         if not args.force and completed(receipt,outputs):
             result.update(status='ok',cached=True,seconds=round(time.monotonic()-started,2),preset=preset)
@@ -135,6 +162,11 @@ def _process_source(payload):
         if args.no_audio:cmd.append('--silent')
         if args.quality=='master' and not (args.preview or args.stills or args.audio_only):cmd.append('--export-social')
         subprocess.run(cmd,check=True)
+        if action=='video':
+            rendered=products(prefix,action,preset,export_social)
+            for source_video,target_video in zip(rendered,outputs):
+                target_video.parent.mkdir(parents=True,exist_ok=True)
+                os.replace(source_video,target_video)
         record(receipt,outputs)
         result.update(status='ok',seconds=round(time.monotonic()-started,2),preset=preset)
         print(f"  Terminé → {job}",flush=True)
@@ -166,7 +198,7 @@ def main():
     ap.add_argument('--path-id',help='Élément précis d’un SVG')
     ap.add_argument('--no-audio',action='store_true')
     ap.add_argument('--recursive',action='store_true',help='Parcourir aussi les sous-dossiers')
-    ap.add_argument('--jobs',type=int,default=0,help='Images en parallèle : 0 auto (max 2), 1 à 4')
+    ap.add_argument('--jobs',type=int,default=0,help='Images en parallèle : 0 auto adapté au processeur, 1 à 4')
     ap.add_argument('--force',action='store_true',help='Recalculer même si les sorties complètes existent')
     ap.add_argument('--output',default=str(ROOT/'output'/'series'))
     args=ap.parse_args()
@@ -214,7 +246,7 @@ def main():
     if workers==1:
         for index,payload in enumerate(payloads):collect(index,_process_source(payload))
     else:
-        print(f'Traitement parallèle : {workers} images · {threads} threads encodeur/image',flush=True)
+        print(f'Traitement parallèle : {workers} images · jusqu’à {threads} threads encodeur/image',flush=True)
         with ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn')) as pool:
             futures={pool.submit(_process_source,payload):index for index,payload in enumerate(payloads)}
             for future in as_completed(futures):

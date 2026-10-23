@@ -17,7 +17,7 @@ from copy import deepcopy
 import hashlib
 from composition import adaptive_composition,fit_bounds,value_bounds
 from trace_image import DEFAULT_TRACE,trace_settings
-from runtime import require_ffmpeg
+from runtime import require_ffmpeg,video_encoder,video_encoder_args
 from pathlib import Path
 
 import numpy as np
@@ -746,9 +746,11 @@ def main():
         reportfile.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
         print(f'Musique prête : {mp3}',flush=True)
         return
+    encoder=video_encoder(require_ffmpeg());report['video_encoder']=encoder
+    print('Encodeur vidéo : '+('Apple VideoToolbox (matériel)' if encoder=='h264_videotoolbox' else 'libx264 (CPU)'),flush=True)
     tempfile=Path(str(prefix)+'_silent.mp4')
     cmd=[require_ffmpeg(),'-v','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{width}x{height}',
-         '-r',str(fps),'-i','-','-an','-c:v','libx264','-threads',str(args.threads),'-preset','fast','-crf','18',
+         '-r',str(fps),'-i','-','-an',*video_encoder_args(encoder,args.threads,width,height),
          '-pix_fmt','yuv420p','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709',
          '-vf','scale=in_range=full:out_range=tv:out_color_matrix=bt709,'
                'setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709',
@@ -773,7 +775,7 @@ def main():
         social=Path(str(prefix)+'_1080x1920.mp4')
         command([require_ffmpeg(),'-v','error','-y','-i',str(final),'-vf','scale=1080:1920:flags=lanczos,'
                  'setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709',
-                 '-c:v','libx264','-threads',str(args.threads),'-preset','fast','-crf','18','-pix_fmt','yuv420p',
+                 *video_encoder_args(encoder,args.threads,1080,1920),'-pix_fmt','yuv420p',
                  '-c:a','copy','-movflags','+faststart',str(social)])
     reportfile.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(f'Done: {final}',flush=True)

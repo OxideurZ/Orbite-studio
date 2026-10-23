@@ -153,7 +153,7 @@ class StudioState:
         self.validate(require_source=True)
         if action not in {'check','stills','preview','export','music'}:raise ValueError('Action inconnue.')
         if action=='music' and not self.config['audio']:raise ValueError('Activer la musique dans l’onglet Musique.')
-        folder=Path(self.output).resolve()/'.studio'/'jobs'/uuid.uuid4().hex
+        folder=Path(self.output).resolve()/'fichiers'/'.studio'/'jobs'/uuid.uuid4().hex
         config=folder/'settings.json';write_json(config,self.animation_config())
         argv=[sys.executable,'-u',str(ROOT/'orbite.py'),str(Path(self.source).resolve()),
               '--config',str(config),'--output',str(Path(self.output).resolve()),

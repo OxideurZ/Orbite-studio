@@ -53,6 +53,9 @@ précédente. Les mises à jour suivent les commits publiés sur `main`.
 - Projets enregistrables et thèmes importables/exportables.
 - Composition classique avec grands cercles, projections droites et plans finaux centrés.
 - Cache des exports et traitement des dossiers en parallèle (réglable dans Export).
+- Les vidéos et les fichiers de projet sont rangés séparément dans `videos/` et
+  `fichiers/`. Sur macOS, l’encodage matériel Apple est sélectionné si FFmpeg le
+  propose ; le mode CPU reste disponible automatiquement en repli.
 
 Les marges sociales sont **désactivées par défaut** et activables dans Animation.
 Les photos sont converties en contours ; contrôler les images fixes avant export.
