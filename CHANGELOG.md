@@ -1,5 +1,11 @@
 # Changements
 
+## 2.2.3 — 23 octobre 2026
+
+- Sujet en construction agrandi jusqu’à environ 8 % de plus pour le preset Cosmos.
+  La composition partagée est recentrée pour conserver des projections droites,
+  des cercles ronds et une marge autour du tracé.
+
 ## 2.2.2 — 23 octobre 2026
 
 - Sur macOS, utilise l’encodeur H.264 VideoToolbox quand FFmpeg le propose, avec

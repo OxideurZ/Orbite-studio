@@ -196,12 +196,12 @@ def _load_contour(c):
     minimal=c.get('layout') in ('minimal','balanced','classic_large')
     # Give the subject more of the frame while keeping the same shared unit for
     # its epicycles. The conservative per-axis bounds below still cap every ring.
-    max_width,max_height=(445,620) if large else (380,530) if balanced else (470,620) if minimal else (350,520)
+    max_width,max_height=(520,700) if large else (380,530) if balanced else (470,620) if minimal else (350,520)
     size = min(max_width/max(np.ptp(z.real),1e-8),max_height/max(np.ptp(z.imag),1e-8))
     auxiliary=[]
     for coeff,rotation,limits in [
-        (x,0,(-280,300,-190,225) if large else (-335,285,-180,215) if balanced else (-550,305,-180,215) if minimal else (-240,215,-180,215)),
-        (y,np.pi/2,(-245,250,-275,325) if large else (-230,235,-280,360) if balanced else (-230,235,-380,370) if minimal else (-230,235,-330,310))]:
+        (x,0,(-302,324,-205,243) if large else (-335,285,-180,215) if balanced else (-550,305,-180,215) if minimal else (-240,215,-180,215)),
+        (y,np.pi/2,(-265,270,-297,351) if large else (-230,235,-280,360) if balanced else (-230,235,-380,370) if minimal else (-230,235,-330,310))]:
         k = max(c['steps']); ns=np.arange(1,k+1)
         r = 2*abs(coeff[1:k+1])
         ts=np.linspace(0,1,512)
@@ -215,7 +215,7 @@ def _load_contour(c):
                 (starts.imag-r[:,None]).min(),(starts.imag+r[:,None]).max()]
         if minimal:
             lo,hi=(bounds[2],bounds[3]) if rotation==0 else (bounds[0],bounds[1])
-            space=(465 if rotation==0 else 530) if large else (480 if rotation==0 else 460) if balanced else (520 if rotation==0 else 850)
+            space=(502 if rotation==0 else 572) if large else (480 if rotation==0 else 460) if balanced else (520 if rotation==0 else 850)
             size=min(size,space/max(hi-lo,1e-8))
             auxiliary.append((lo,hi))
         for j,(bound,limit) in enumerate(zip(bounds,limits)):
@@ -226,9 +226,9 @@ def _load_contour(c):
     info={'available_components':count,'selected_components':len(components),
           'pen_down_fraction':float(pen.mean()),'normalization_scale':float(scale)}
     if minimal:
-        info['geometry']={'center':[715,1160] if large else [715,1080] if balanced else [620,1100],
-            'x_root_y':float((670 if large else 510 if balanced else 480)-np.mean(auxiliary[0])*scale),
-            'y_root_x':float((287.5 if large else 285 if balanced else 485)-np.mean(auxiliary[1])*scale)}
+        info['geometry']={'center':[795,1160] if large else [715,1080] if balanced else [620,1100],
+            'x_root_y':float((658 if large else 510 if balanced else 480)-np.mean(auxiliary[0])*scale),
+            'y_root_x':float((322.5 if large else 285 if balanced else 485)-np.mean(auxiliary[1])*scale)}
     return z,pen,info
 
 
@@ -447,7 +447,7 @@ class Film:
             cv.text((995,380),f'{i+1:02d} / {len(self.c["steps"]):02d}',18,col['muted'],anchor='ra')
             cv.line([(86,432),(995,432)],mix(col['background'],col['trace'],.22))
             for v,root,color,label in signals:self.signal(cv,v,phase,root,color,label,width=265,part='static')
-            cv.text((575,550) if landscape else (555,475),'PROJECTION X',17,col['x'])
+            cv.text((575,550) if landscape else (555,445),'PROJECTION X',17,col['x'])
             cv.text((85,550) if landscape else (85,795),'PROJECTION Y',17,col['y'])
             self.draw_trace(cv,self.z,center,scale,mix(col['background'],col['trace'],.44),1.5,ghost=True)
             caption=self.c['captions']['early' if k<=3 else 'middle' if k<=24 else 'late']
